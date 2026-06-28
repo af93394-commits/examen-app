@@ -421,10 +421,14 @@ function openTextoModal(texto) {
   modal.className = 'modal-overlay active';
   modal.innerHTML = '<div class="modal" style="max-width:600px"><button class="close" onclick="closeTextoModal()">&times;</button>' +
     '<h2>' + (editingTexto ? 'Editar Texto' : 'Nuevo Texto de Lectura') + '</h2>' +
-    '<form id="textoForm"><div class="form-group"><label>Titulo descriptivo</label>' +
+    '<form id="textoForm" enctype="multipart/form-data"><div class="form-group"><label>Titulo descriptivo</label>' +
     '<input type="text" id="fTextoTitulo" value="' + (texto ? texto.titulo : '') + '" required placeholder="Ej: Carta de Gustave a su madre"></div>' +
     '<div class="form-group"><label>Texto completo</label>' +
     '<textarea id="fTextoContenido" rows="10" required placeholder="Pegar aquí el texto completo de lectura...">' + (texto ? texto.texto : '') + '</textarea></div>' +
+    '<div class="form-group"><label>Imagen del texto (opcional - gráfica, mapa, etc.)</label>' +
+    '<input type="file" id="fTextoImagen" accept="image/*">' +
+    (texto && texto.imagen ? '<div style="margin-top:8px"><img src="' + texto.imagen + '" style="max-width:100%;max-height:200px;border-radius:8px;border:1px solid #e2e8f0"><br><label style="font-size:12px;color:#64748b"><input type="checkbox" id="fTextoEliminarImagen"> Eliminar imagen actual</label></div>' : '') +
+    '</div>' +
     '<div class="form-group"><label>Orden (para mostrar en el cuestionario)</label>' +
     '<input type="number" id="fTextoOrden" value="' + (texto ? texto.orden : 0) + '"></div>' +
     '<input type="hidden" id="fTextoId" value="' + (texto ? texto.id : '') + '">' +
@@ -449,16 +453,26 @@ function editTexto(texto) {
 function saveTexto() {
   var cuestId = document.getElementById('selectCuestionarioTextos').value;
   var id = document.getElementById('fTextoId').value;
-  var data = {
-    titulo: document.getElementById('fTextoTitulo').value,
-    texto: document.getElementById('fTextoContenido').value,
-    orden: parseInt(document.getElementById('fTextoOrden').value) || 0
-  };
+  
+  var fd = new FormData();
+  fd.append('titulo', document.getElementById('fTextoTitulo').value);
+  fd.append('texto', document.getElementById('fTextoContenido').value);
+  fd.append('orden', parseInt(document.getElementById('fTextoOrden').value) || 0);
+  
+  var imgFile = document.getElementById('fTextoImagen').files[0];
+  if (imgFile) {
+    fd.append('imagen', imgFile);
+  } else if (editingTexto) {
+    var eliminarImg = document.getElementById('fTextoEliminarImagen') && document.getElementById('fTextoEliminarImagen').checked;
+    if (eliminarImg) {
+      fd.append('imagen_existente', '');
+    }
+  }
   
   var url = editingTexto ? '/api/textos/' + id : '/api/cuestionarios/' + cuestId + '/textos';
   var method = editingTexto ? 'PUT' : 'POST';
   
-  fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+  fetch(url, { method: method, body: fd })
     .then(function(r) { return r.json(); })
     .then(function() { closeTextoModal(); loadTextos(); });
 }

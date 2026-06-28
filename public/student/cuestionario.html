@@ -120,7 +120,9 @@ function renderAll() {
       
       // Renderizar el texto de lectura una vez
       html += '<div class="scroll-group">';
-      html += '<div class="texto-lectura-box"><h3>&#128214; Texto de lectura</h3><p>' + textoLectura + '</p></div>';
+      html += '<div class="texto-lectura-box"><h3>&#128214; Texto de lectura</h3><p>' + textoLectura + '</p>';
+      if (p.texto_lectura_imagen) html += '<img src="' + p.texto_lectura_imagen + '" style="max-width:100%;border-radius:8px;margin-top:12px;border:1px solid #e2e8f0">';
+      html += '</div>';
       
       // Renderizar todas las preguntas del grupo en scroll
       html += '<div class="preguntas-scroll">';
