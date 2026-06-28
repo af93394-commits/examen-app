@@ -229,10 +229,12 @@ function openModal() {
   imagenesOpciones = { A: null, B: null, C: null, D: null };
   imagenesOpcionesEliminadas = { A: false, B: false, C: false, D: false };
   imagenesOpcionesExistentes = { A: null, B: null, C: null, D: null };
+  fi.value = '';
   pi.style.display = 'none';
   pi.src = '';
   btnRemove.style.display = 'none';
   ['A','B','C','D'].forEach(function(l) {
+    document.getElementById('fImg' + l).value = '';
     document.getElementById('previewImg' + l).style.display = 'none';
     document.getElementById('previewImg' + l).src = '';
     document.getElementById('btnRemoveImg' + l).style.display = 'none';
