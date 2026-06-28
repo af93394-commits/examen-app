@@ -106,6 +106,7 @@ var editing = false, imagenActual = null, imagenPegada = null, imagenEliminada =
 var imagenesOpciones = { A: null, B: null, C: null, D: null };
 var imagenesOpcionesEliminadas = { A: false, B: false, C: false, D: false };
 var imagenesOpcionesExistentes = { A: null, B: null, C: null, D: null };
+var imagenNuevaSeleccionada = false;
 
 fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
   document.getElementById('userName').textContent = d.user.nombre;
@@ -118,7 +119,7 @@ dz.addEventListener('click', function() { fi.click(); });
 dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('dragover'); });
 dz.addEventListener('dragleave', function() { dz.classList.remove('dragover'); });
 dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remove('dragover'); fi.files = e.dataTransfer.files; showPreview(e.dataTransfer.files[0]); });
-fi.addEventListener('change', function() { if (fi.files[0]) showPreview(fi.files[0]); });
+fi.addEventListener('change', function() { if (fi.files[0]) { imagenNuevaSeleccionada = true; showPreview(fi.files[0]); } });
 
 document.addEventListener('paste', function(e) {
   // Solo pegar imagen si el foco esta en el drop zone o en el modal
@@ -138,6 +139,7 @@ document.addEventListener('paste', function(e) {
       dt.items.add(file);
       fi.files = dt.files;
       imagenPegada = file;
+      imagenNuevaSeleccionada = true;
       showPreview(file);
       e.preventDefault();
       break;
@@ -157,6 +159,7 @@ function removeImage() {
   btnRemove.style.display = 'none';
   fi.value = '';
   imagenPegada = null;
+  imagenNuevaSeleccionada = false;
   if (editing) imagenEliminada = true;
 }
 
@@ -232,6 +235,7 @@ function openModal() {
   imagenActual = null;
   imagenPegada = null;
   imagenEliminada = false;
+  imagenNuevaSeleccionada = false;
   imagenesOpciones = { A: null, B: null, C: null, D: null };
   imagenesOpcionesEliminadas = { A: false, B: false, C: false, D: false };
   imagenesOpcionesExistentes = { A: null, B: null, C: null, D: null };
@@ -254,6 +258,7 @@ function editPregunta(p) {
   imagenActual = p.imagen;
   imagenPegada = null;
   imagenEliminada = false;
+  imagenNuevaSeleccionada = false;
   imagenesOpciones = { A: null, B: null, C: null, D: null };
   imagenesOpcionesEliminadas = { A: false, B: false, C: false, D: false };
   imagenesOpcionesExistentes = { A: p.imagen_opcion_a || null, B: p.imagen_opcion_b || null, C: p.imagen_opcion_c || null, D: p.imagen_opcion_d || null };
@@ -292,17 +297,16 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   fd.append('opcion_d', document.getElementById('fOpcD').value);
   fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
   fd.append('materia_id', document.getElementById('fMateria').value);
-  // Solo enviar imagen si es edicion con imagen existente o si se selecciono una nueva imagen
-  if (editing) {
-    if (fi.files[0]) {
-      fd.append('imagen', fi.files[0]);
-    } else if (imagenEliminada) {
+  // Solo enviar imagen si se selecciono una nueva imagen o si es edicion con imagen existente
+  if (imagenNuevaSeleccionada && fi.files[0]) {
+    fd.append('imagen', fi.files[0]);
+  } else if (editing) {
+    if (imagenEliminada) {
       fd.append('imagen_existente', '');
     } else if (imagenActual) {
       fd.append('imagen_existente', imagenActual);
     }
   }
-  // Para nueva pregunta, NO enviar imagen a menos que se haya seleccionado una
   ['A','B','C','D'].forEach(function(l) {
     var key = 'imagen_opcion_' + l.toLowerCase();
     if (imagenesOpciones[l]) {
