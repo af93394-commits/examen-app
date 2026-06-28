@@ -148,7 +148,7 @@ function loadPreguntas() {
       var img = p.imagen ? '<span style="color:#16a34a">&#10003;</span>' : '<span style="color:#94a3b8">No</span>';
       var row = '<tr><td>' + p.id + '</td><td>' + txt + '</td><td>' + img + '</td>';
       row += '<td><strong>' + p.respuesta_correcta + '</strong></td>';
-      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick=\'editPregunta(' + JSON.stringify(p) + ')\'>&#9998; Editar</button> ';
+      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick="editPregunta(' + JSON.stringify(p).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       row += '<button class="btn btn-sm btn-danger" onclick="deletePregunta(' + p.id + ')">&#128465; Eliminar</button></td></tr>';
       tb.innerHTML += row;
     });
@@ -240,7 +240,7 @@ function loadCuestionarios() {
       html += '<p style="color:#64748b;margin-bottom:12px">' + totalP + ' preguntas | Tiempo: ' + q.tiempo_limite + ' min</p>';
       html += '<div class="actions">';
       html += '<button class="btn btn-sm btn-primary" onclick="openAsig(' + q.id + ',\'' + q.titulo.replace(/'/g, "\\'") + '\')">&#128196; Asignar Preguntas</button> ';
-      html += '<button class="btn btn-sm btn-secondary" onclick=\'editCuest(' + JSON.stringify(q) + ')\'>&#9998; Editar</button> ';
+      html += '<button class="btn btn-sm btn-secondary" onclick="editCuest(' + JSON.stringify(q).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       html += publishBtn + ' ';
       html += '<button class="btn btn-sm btn-danger" onclick="deleteCuest(' + q.id + ')">&#128465; Eliminar</button>';
       html += '</div></div>';

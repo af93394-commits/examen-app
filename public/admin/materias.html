@@ -71,7 +71,7 @@ function load() {
         row += '<td><span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></td>';
         row += '<td class="actions">';
         row += '<a href="/admin/materia.html?id=' + m.id + '" class="btn btn-sm btn-success">&#128194; Gestionar</a> ';
-        row += '<button class="btn btn-sm btn-primary" onclick=\'editMateria(' + JSON.stringify(m) + ')\'>&#9998; Editar</button> ';
+        row += '<button class="btn btn-sm btn-primary" onclick="editMateria(' + JSON.stringify(m).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
         row += '<button class="btn btn-sm btn-danger" onclick="deleteMateria(' + m.id + ')">&#128465; Eliminar</button></td></tr>';
         tb.innerHTML += row;
       });

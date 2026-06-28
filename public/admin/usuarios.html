@@ -60,7 +60,7 @@ function load() {
       var row = '<tr><td>' + u.id + '</td><td>' + u.usuario + '</td><td>' + u.nombre_completo + '</td>';
       row += '<td><span class="badge ' + rolBadge + '">' + rolLabel + '</span></td>';
       row += '<td><span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></td>';
-      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick=\'editUser(' + JSON.stringify(u) + ')\'>&#9998; Editar</button> ';
+      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick="editUser(' + JSON.stringify(u).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       row += '<button class="btn btn-sm btn-danger" onclick="deleteUser(' + u.id + ')">&#128465; Eliminar</button></td></tr>';
       tb.innerHTML += row;
     });

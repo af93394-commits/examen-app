@@ -117,7 +117,7 @@ function load() {
       html += '<p style="color:#64748b;margin-bottom:12px">' + totalP + ' preguntas | Tiempo: ' + q.tiempo_limite + ' min</p>';
       html += '<div class="actions">';
       html += '<button class="btn btn-sm btn-primary" onclick="openAsig(' + q.id + ',\'' + q.titulo.replace(/'/g, "\\'") + '\')">&#128196; Asignar Preguntas</button> ';
-      html += '<button class="btn btn-sm btn-secondary" onclick=\'editCuest(' + JSON.stringify(q) + ')\'>&#9998; Editar</button> ';
+      html += '<button class="btn btn-sm btn-secondary" onclick="editCuest(' + JSON.stringify(q).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       html += '<button class="btn btn-sm ' + toggleClass + '" onclick="togglePublicar(' + q.id + ',' + newActivo + ')">' + publishLabel + '</button> ';
       html += '<button class="btn btn-sm btn-danger" onclick="deleteCuest(' + q.id + ')">&#128465; Eliminar</button>';
       html += '</div></div>';

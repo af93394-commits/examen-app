@@ -217,7 +217,7 @@ function load() {
       var materia = p.materia_nombre || 'Sin materia';
       var row = '<tr><td>' + (idx + 1) + '</td><td>' + txt + '</td><td><span class="badge badge-admin">' + materia + '</span></td><td>' + img + '</td>';
       row += '<td><strong>' + p.respuesta_correcta + '</strong></td>';
-      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick=\'editPregunta(' + JSON.stringify(p) + ')\'>&#9998; Editar</button> ';
+      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick="editPregunta(' + JSON.stringify(p).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       row += '<button class="btn btn-sm btn-danger" onclick="deletePregunta(' + p.id + ')">&#128465; Eliminar</button></td></tr>';
       tb.innerHTML += row;
     });
