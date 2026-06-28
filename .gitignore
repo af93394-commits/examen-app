@@ -8,3 +8,4 @@ SESION_TRABAJO.md
 uploads/*
 !uploads/.gitkeep
 .env
+insert_batch.js
