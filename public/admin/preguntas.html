@@ -286,21 +286,27 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   fd.append('opcion_d', document.getElementById('fOpcD').value);
   fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
   fd.append('materia_id', document.getElementById('fMateria').value);
-  if (fi.files[0]) {
-    fd.append('imagen', fi.files[0]);
-  } else if (imagenEliminada) {
-    fd.append('imagen_existente', '');
-  } else if (imagenActual) {
-    fd.append('imagen_existente', imagenActual);
+  // Solo enviar imagen si es edicion con imagen existente o si se selecciono una nueva imagen
+  if (editing) {
+    if (fi.files[0]) {
+      fd.append('imagen', fi.files[0]);
+    } else if (imagenEliminada) {
+      fd.append('imagen_existente', '');
+    } else if (imagenActual) {
+      fd.append('imagen_existente', imagenActual);
+    }
   }
+  // Para nueva pregunta, NO enviar imagen a menos que se haya seleccionado una
   ['A','B','C','D'].forEach(function(l) {
     var key = 'imagen_opcion_' + l.toLowerCase();
     if (imagenesOpciones[l]) {
       fd.append('imagen_opcion_' + l.toLowerCase(), imagenesOpciones[l]);
-    } else if (imagenesOpcionesEliminadas[l]) {
-      fd.append(key + '_existente', '');
-    } else if (imagenesOpcionesExistentes[l]) {
-      fd.append(key + '_existente', imagenesOpcionesExistentes[l]);
+    } else if (editing) {
+      if (imagenesOpcionesEliminadas[l]) {
+        fd.append(key + '_existente', '');
+      } else if (imagenesOpcionesExistentes[l]) {
+        fd.append(key + '_existente', imagenesOpcionesExistentes[l]);
+      }
     }
   });
 
