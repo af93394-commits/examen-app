@@ -102,6 +102,7 @@
 <script>
 var materiaId = new URLSearchParams(window.location.search).get('id');
 var editingPreg = false, imagenActual = null, editingCuest = false, currentCuestId = 0;
+var imagenNuevaSeleccionada = false;
 
 if (!materiaId) window.location.href = '/admin/materias.html';
 
@@ -135,7 +136,7 @@ dz.addEventListener('click', function() { fi.click(); });
 dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('dragover'); });
 dz.addEventListener('dragleave', function() { dz.classList.remove('dragover'); });
 dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remove('dragover'); fi.files = e.dataTransfer.files; showPreview(e.dataTransfer.files[0]); });
-fi.addEventListener('change', function() { if (fi.files[0]) showPreview(fi.files[0]); });
+fi.addEventListener('change', function() { if (fi.files[0]) { imagenNuevaSeleccionada = true; showPreview(fi.files[0]); } });
 function showPreview(f) { var r = new FileReader(); r.onload = function(e) { pi.src = e.target.result; pi.style.display = 'block'; }; r.readAsDataURL(f); }
 
 function loadPreguntas() {
@@ -163,6 +164,8 @@ function openPreguntaModal() {
   document.getElementById('preguntaForm').reset();
   document.getElementById('editPregId').value = '';
   imagenActual = null;
+  imagenNuevaSeleccionada = false;
+  fi.value = '';
   pi.style.display = 'none'; pi.src = '';
   document.getElementById('modalPregunta').classList.add('active');
 }
@@ -170,6 +173,7 @@ function openPreguntaModal() {
 function editPregunta(p) {
   editingPreg = true;
   imagenActual = p.imagen;
+  imagenNuevaSeleccionada = false;
   document.getElementById('preguntaModalTitle').textContent = 'Editar Pregunta';
   document.getElementById('editPregId').value = p.id;
   document.getElementById('fTexto').value = p.texto;
@@ -194,8 +198,13 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   fd.append('opcion_d', document.getElementById('fOpcD').value);
   fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
   fd.append('materia_id', materiaId);
-  if (fi.files[0]) fd.append('imagen', fi.files[0]);
-  else if (imagenActual) fd.append('imagen_existente', imagenActual);
+  if (imagenNuevaSeleccionada && fi.files[0]) {
+    fd.append('imagen', fi.files[0]);
+  } else if (editingPreg && imagenActual) {
+    fd.append('imagen_existente', imagenActual);
+  } else if (editingPreg) {
+    fd.append('imagen_existente', '');
+  }
 
   var id = document.getElementById('editPregId').value;
   if (editingPreg) { await fetch('/api/preguntas/' + id, { method: 'PUT', body: fd }); }
