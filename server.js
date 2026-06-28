@@ -7,6 +7,7 @@ const session = require('express-session');
 const SQLiteStore = require('connect-sqlite3')(session);
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
+const cloudinary = require('cloudinary').v2;
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -14,6 +15,25 @@ const PORT = process.env.PORT || 3000;
 const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+cloudinary.config({
+  cloud_name: process.env.CLOUD_NAME || 'dqr6zgmed',
+  api_key: process.env.CLOUD_API_KEY || '511682233551561',
+  api_secret: process.env.CLOUD_API_SECRET || 'LT6349_n6nTFP4x3L7rBMf2T_VU'
+});
+
+function uploadToCloudinary(buffer, folder) {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.uploader.upload_stream(
+      { folder: folder, resource_type: 'image' },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result.secure_url);
+      }
+    );
+    uploadStream.end(buffer);
+  });
+}
 
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
@@ -29,13 +49,7 @@ app.use(session({
   cookie: { maxAge: 24 * 60 * 60 * 1000, secure: false }
 }));
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
-});
+const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 },
@@ -277,30 +291,40 @@ const uploadPregunta = upload.fields([
   { name: 'imagen_opcion_d', maxCount: 1 }
 ]);
 
-app.post('/api/preguntas', requireAdmin, uploadPregunta, (req, res) => {
+app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
   const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id } = req.body;
   if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
-  const imagen = req.files && req.files['imagen'] ? '/uploads/' + req.files['imagen'][0].filename : null;
-  const imgA = req.files && req.files['imagen_opcion_a'] ? '/uploads/' + req.files['imagen_opcion_a'][0].filename : null;
-  const imgB = req.files && req.files['imagen_opcion_b'] ? '/uploads/' + req.files['imagen_opcion_b'][0].filename : null;
-  const imgC = req.files && req.files['imagen_opcion_c'] ? '/uploads/' + req.files['imagen_opcion_c'][0].filename : null;
-  const imgD = req.files && req.files['imagen_opcion_d'] ? '/uploads/' + req.files['imagen_opcion_d'][0].filename : null;
-  db.run('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD],
-    function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ id: this.lastID, message: 'Pregunta creada' }); });
+  try {
+    let imagen = null, imgA = null, imgB = null, imgC = null, imgD = null;
+    if (req.files && req.files['imagen']) imagen = await uploadToCloudinary(req.files['imagen'][0].buffer, 'examen/preguntas');
+    if (req.files && req.files['imagen_opcion_a']) imgA = await uploadToCloudinary(req.files['imagen_opcion_a'][0].buffer, 'examen/opciones');
+    if (req.files && req.files['imagen_opcion_b']) imgB = await uploadToCloudinary(req.files['imagen_opcion_b'][0].buffer, 'examen/opciones');
+    if (req.files && req.files['imagen_opcion_c']) imgC = await uploadToCloudinary(req.files['imagen_opcion_c'][0].buffer, 'examen/opciones');
+    if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
+    db.run('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD],
+      function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ id: this.lastID, message: 'Pregunta creada' }); });
+  } catch (e) { return res.status(500).json({ error: 'Error subiendo imagen: ' + e.message }); }
 });
-app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, (req, res) => {
+app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => {
   const { id } = req.params;
   const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, imagen_existente, materia_id,
           imagen_opcion_a_existente, imagen_opcion_b_existente, imagen_opcion_c_existente, imagen_opcion_d_existente } = req.body;
-  const imagen = req.files && req.files['imagen'] ? '/uploads/' + req.files['imagen'][0].filename : (imagen_existente || null);
-  const imgA = req.files && req.files['imagen_opcion_a'] ? '/uploads/' + req.files['imagen_opcion_a'][0].filename : (imagen_opcion_a_existente || null);
-  const imgB = req.files && req.files['imagen_opcion_b'] ? '/uploads/' + req.files['imagen_opcion_b'][0].filename : (imagen_opcion_b_existente || null);
-  const imgC = req.files && req.files['imagen_opcion_c'] ? '/uploads/' + req.files['imagen_opcion_c'][0].filename : (imagen_opcion_c_existente || null);
-  const imgD = req.files && req.files['imagen_opcion_d'] ? '/uploads/' + req.files['imagen_opcion_d'][0].filename : (imagen_opcion_d_existente || null);
-  db.run('UPDATE preguntas SET texto=?, imagen=?, opcion_a=?, opcion_b=?, opcion_c=?, opcion_d=?, respuesta_correcta=?, materia_id=?, imagen_opcion_a=?, imagen_opcion_b=?, imagen_opcion_c=?, imagen_opcion_d=? WHERE id=?',
-    [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, imgA, imgB, imgC, imgD, id],
-    function(err) { if (err) return res.status(500).json({ error: err.message }); if (this.changes === 0) return res.status(404).json({ error: 'No encontrada' }); res.json({ message: 'Pregunta actualizada' }); });
+  try {
+    let imagen = imagen_existente || null;
+    let imgA = imagen_opcion_a_existente || null;
+    let imgB = imagen_opcion_b_existente || null;
+    let imgC = imagen_opcion_c_existente || null;
+    let imgD = imagen_opcion_d_existente || null;
+    if (req.files && req.files['imagen']) imagen = await uploadToCloudinary(req.files['imagen'][0].buffer, 'examen/preguntas');
+    if (req.files && req.files['imagen_opcion_a']) imgA = await uploadToCloudinary(req.files['imagen_opcion_a'][0].buffer, 'examen/opciones');
+    if (req.files && req.files['imagen_opcion_b']) imgB = await uploadToCloudinary(req.files['imagen_opcion_b'][0].buffer, 'examen/opciones');
+    if (req.files && req.files['imagen_opcion_c']) imgC = await uploadToCloudinary(req.files['imagen_opcion_c'][0].buffer, 'examen/opciones');
+    if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
+    db.run('UPDATE preguntas SET texto=?, imagen=?, opcion_a=?, opcion_b=?, opcion_c=?, opcion_d=?, respuesta_correcta=?, materia_id=?, imagen_opcion_a=?, imagen_opcion_b=?, imagen_opcion_c=?, imagen_opcion_d=? WHERE id=?',
+      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, imgA, imgB, imgC, imgD, id],
+      function(err) { if (err) return res.status(500).json({ error: err.message }); if (this.changes === 0) return res.status(404).json({ error: 'No encontrada' }); res.json({ message: 'Pregunta actualizada' }); });
+  } catch (e) { return res.status(500).json({ error: 'Error subiendo imagen: ' + e.message }); }
 });
 app.delete('/api/preguntas/:id', requireAdmin, (req, res) => {
   db.run('DELETE FROM preguntas WHERE id = ?', [req.params.id], function(err) {
