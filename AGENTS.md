@@ -20,13 +20,15 @@ Plataforma de examenes/cuestionarios ICFES para estudiantes colombianos.
 2. **RESPETAR:** Espacios, saltos de linea, puntuacion exacta del usuario.
 3. **ORDEN:** Las preguntas van en orden secuencial (1, 2, 3... dentro del cuestionario).
 4. **NO tocar:** Clave admin, estructura de cuestionarios existentes.
+5. **IMAGENES:** Solo insertar el TEXTO de las preguntas. Las imagenes las sube el usuario manualmente desde el admin panel. NO pegar imagenes en el texto.
 
 ## Como agregar preguntas nuevas
 1. Pedir al usuario el bloque de preguntas en texto
 2. Insertar en PostgreSQL usando la URL de DATABASE_URL
-3. Asociar al cuestionario ID 9
+3. Asociar al cuestionario correspondiente
 4. Actualizar SESION_TRABAJO.md con los nuevos IDs y textos
-5. Commitear a GitHub para auto-deploy en Render
+5. **SIEMPRE commitear y pushear a GitHub** para que Render haga auto-deploy
+6. Verificar que el deploy fue exitoso
 
 ## Archivos clave
 - `server.js` - Servidor principal (API, rutas, uploads)
