@@ -1,10 +1,10 @@
 ﻿const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
+const { Pool } = require('pg');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const path = require('path');
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
+const PgSession = require('connect-pg-simple')(session);
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const cloudinary = require('cloudinary').v2;
@@ -25,7 +25,7 @@ cloudinary.config({
 function uploadToCloudinary(buffer, folder) {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
-      { folder: folder, resource_type: 'image' },
+      { folder, resource_type: 'image' },
       (error, result) => {
         if (error) reject(error);
         else resolve(result.secure_url);
@@ -35,6 +35,102 @@ function uploadToCloudinary(buffer, folder) {
   });
 }
 
+const db = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+});
+
+async function initDB() {
+  try {
+    await db.query(`CREATE TABLE IF NOT EXISTS materias (
+      id SERIAL PRIMARY KEY,
+      nombre TEXT UNIQUE NOT NULL,
+      descripcion TEXT,
+      activo INTEGER DEFAULT 1,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS usuarios (
+      id SERIAL PRIMARY KEY,
+      usuario TEXT UNIQUE NOT NULL,
+      password TEXT NOT NULL,
+      nombre_completo TEXT NOT NULL,
+      rol TEXT NOT NULL DEFAULT 'estudiante',
+      activo INTEGER DEFAULT 1,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS preguntas (
+      id SERIAL PRIMARY KEY,
+      texto TEXT NOT NULL,
+      imagen TEXT,
+      opcion_a TEXT NOT NULL,
+      opcion_b TEXT NOT NULL,
+      opcion_c TEXT NOT NULL,
+      opcion_d TEXT NOT NULL,
+      respuesta_correcta TEXT NOT NULL,
+      materia_id INTEGER REFERENCES materias(id),
+      creado_por INTEGER REFERENCES usuarios(id),
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      imagen_opcion_a TEXT,
+      imagen_opcion_b TEXT,
+      imagen_opcion_c TEXT,
+      imagen_opcion_d TEXT
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS cuestionarios (
+      id SERIAL PRIMARY KEY,
+      titulo TEXT NOT NULL,
+      descripcion TEXT,
+      materia_id INTEGER REFERENCES materias(id),
+      tiempo_limite INTEGER DEFAULT 60,
+      activo INTEGER DEFAULT 1,
+      creado_por INTEGER REFERENCES usuarios(id),
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS cuestionario_preguntas (
+      id SERIAL PRIMARY KEY,
+      cuestionario_id INTEGER NOT NULL REFERENCES cuestionarios(id) ON DELETE CASCADE,
+      pregunta_id INTEGER NOT NULL REFERENCES preguntas(id) ON DELETE CASCADE,
+      orden INTEGER DEFAULT 0
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS intentos (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+      cuestionario_id INTEGER NOT NULL REFERENCES cuestionarios(id),
+      puntuacion INTEGER DEFAULT 0,
+      total_preguntas INTEGER DEFAULT 0,
+      completado INTEGER DEFAULT 0,
+      inicio_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      fin_en TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS intento_respuestas (
+      id SERIAL PRIMARY KEY,
+      intento_id INTEGER NOT NULL REFERENCES intentos(id) ON DELETE CASCADE,
+      pregunta_id INTEGER NOT NULL REFERENCES preguntas(id),
+      respuesta_seleccionada TEXT,
+      es_correcta INTEGER DEFAULT 0
+    )`);
+
+    const m = await db.query('SELECT COUNT(*) as t FROM materias');
+    if (parseInt(m.rows[0].t) === 0) {
+      const materias = [
+        ['Matematicas', 'Razonamiento cuantitativo, algebra y geometria'],
+        ['Lectura Critica', 'Comprension lectora e interpretacion de textos'],
+        ['Ciencias Naturales', 'Biologia, quimica y fisica'],
+        ['Ciencias Sociales', 'Historia, geografia y constitution politica'],
+        ['Ingles', 'Comprension y uso del idioma ingles']
+      ];
+      for (const mat of materias) {
+        await db.query('INSERT INTO materias (nombre, descripcion) VALUES ($1, $2)', mat);
+      }
+      const adminPass = bcrypt.hashSync('admin123', 10);
+      await db.query('INSERT INTO usuarios (usuario, password, nombre_completo, rol) VALUES ($1, $2, $3, $4)', ['admin', adminPass, 'Administrador', 'admin']);
+    }
+    console.log('PostgreSQL conectado y tablas creadas');
+  } catch (e) {
+    console.error('Error DB:', e.message);
+  }
+}
+initDB();
+
 app.use(cors());
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
@@ -42,7 +138,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.db', dir: __dirname }),
+  store: new PgSession({ pool: db, tableName: 'user_sessions' }),
   secret: process.env.SESSION_SECRET || 'icfes-cuestionarios-secret-2024',
   resave: false,
   saveUninitialized: false,
@@ -62,107 +158,6 @@ const upload = multer({
   }
 });
 
-const db = new sqlite3.Database('./examen.db', (err) => {
-  if (err) console.error('Error BD:', err.message);
-  else {
-    console.log('Conectado a SQLite');
-    db.serialize(() => {
-      db.run(`CREATE TABLE IF NOT EXISTS materias (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT UNIQUE NOT NULL,
-        descripcion TEXT,
-        activo INTEGER DEFAULT 1,
-        creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`);
-
-      db.run(`CREATE TABLE IF NOT EXISTS usuarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        nombre_completo TEXT NOT NULL,
-        rol TEXT NOT NULL DEFAULT 'estudiante',
-        activo INTEGER DEFAULT 1,
-        creado_en DATETIME DEFAULT CURRENT_TIMESTAMP
-      )`);
-
-      db.run(`CREATE TABLE IF NOT EXISTS preguntas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        texto TEXT NOT NULL,
-        imagen TEXT,
-        opcion_a TEXT NOT NULL,
-        opcion_b TEXT NOT NULL,
-        opcion_c TEXT NOT NULL,
-        opcion_d TEXT NOT NULL,
-        respuesta_correcta TEXT NOT NULL,
-        materia_id INTEGER,
-        creado_por INTEGER,
-        creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (materia_id) REFERENCES materias(id),
-        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
-      )`);
-
-      db.run(`CREATE TABLE IF NOT EXISTS cuestionarios (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        titulo TEXT NOT NULL,
-        descripcion TEXT,
-        materia_id INTEGER,
-        tiempo_limite INTEGER DEFAULT 60,
-        activo INTEGER DEFAULT 1,
-        creado_por INTEGER,
-        creado_en DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (materia_id) REFERENCES materias(id),
-        FOREIGN KEY (creado_por) REFERENCES usuarios(id)
-      )`);
-
-      db.run(`CREATE TABLE IF NOT EXISTS cuestionario_preguntas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        cuestionario_id INTEGER NOT NULL,
-        pregunta_id INTEGER NOT NULL,
-        orden INTEGER DEFAULT 0,
-        FOREIGN KEY (cuestionario_id) REFERENCES cuestionarios(id) ON DELETE CASCADE,
-        FOREIGN KEY (pregunta_id) REFERENCES preguntas(id) ON DELETE CASCADE
-      )`);
-
-      db.run(`CREATE TABLE IF NOT EXISTS intentos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        usuario_id INTEGER NOT NULL,
-        cuestionario_id INTEGER NOT NULL,
-        puntuacion INTEGER DEFAULT 0,
-        total_preguntas INTEGER DEFAULT 0,
-        completado INTEGER DEFAULT 0,
-        inicio_en DATETIME DEFAULT CURRENT_TIMESTAMP,
-        fin_en DATETIME,
-        FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
-        FOREIGN KEY (cuestionario_id) REFERENCES cuestionarios(id)
-      )`);
-
-      db.run(`CREATE TABLE IF NOT EXISTS intento_respuestas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        intento_id INTEGER NOT NULL,
-        pregunta_id INTEGER NOT NULL,
-        respuesta_seleccionada TEXT,
-        es_correcta INTEGER DEFAULT 0,
-        FOREIGN KEY (intento_id) REFERENCES intentos(id) ON DELETE CASCADE,
-        FOREIGN KEY (pregunta_id) REFERENCES preguntas(id)
-      )`);
-
-      const materias = [
-        ['Matematicas', 'Razonamiento cuantitativo, algebra y geometria'],
-        ['Lectura Critica', 'Comprension lectora e interpretacion de textos'],
-        ['Ciencias Naturales', 'Biologia, quimica y fisica'],
-        ['Ciencias Sociales', 'Historia, geografia y constitution politica'],
-        ['Ingles', 'Comprension y uso del idioma ingles']
-      ];
-      materias.forEach(m => {
-        db.run('INSERT OR IGNORE INTO materias (nombre, descripcion) VALUES (?, ?)', m);
-      });
-
-      const adminPass = bcrypt.hashSync('admin123', 10);
-      db.run(`INSERT OR IGNORE INTO usuarios (usuario, password, nombre_completo, rol) VALUES ('admin', ?, 'Administrador', 'admin')`, [adminPass]);
-    });
-  }
-});
-
 function requireAuth(req, res, next) {
   if (req.session && req.session.user) return next();
   res.status(401).json({ error: 'No autenticado' });
@@ -173,15 +168,16 @@ function requireAdmin(req, res, next) {
 }
 
 // ============ AUTH ============
-app.post('/api/login', (req, res) => {
-  const { usuario, password } = req.body;
-  if (!usuario || !password) return res.status(400).json({ error: 'Usuario y password requeridos' });
-  db.get('SELECT * FROM usuarios WHERE usuario = ? AND activo = 1', [usuario], (err, user) => {
-    if (err) return res.status(500).json({ error: err.message });
+app.post('/api/login', async (req, res) => {
+  try {
+    const { usuario, password } = req.body;
+    if (!usuario || !password) return res.status(400).json({ error: 'Usuario y password requeridos' });
+    const r = await db.query('SELECT * FROM usuarios WHERE usuario = $1 AND activo = 1', [usuario]);
+    const user = r.rows[0];
     if (!user || !bcrypt.compareSync(password, user.password)) return res.status(401).json({ error: 'Credenciales incorrectas' });
     req.session.user = { id: user.id, usuario: user.usuario, nombre: user.nombre_completo, rol: user.rol };
     res.json({ message: 'Login exitoso', user: req.session.user });
-  });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.post('/api/logout', (req, res) => { req.session.destroy(); res.json({ message: 'Sesion cerrada' }); });
 app.get('/api/sesion', (req, res) => {
@@ -190,98 +186,95 @@ app.get('/api/sesion', (req, res) => {
 });
 
 // ============ MATERIAS ============
-app.get('/api/materias', requireAuth, (req, res) => {
-  db.all('SELECT * FROM materias WHERE activo = 1 ORDER BY nombre', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ materias: rows });
-  });
+app.get('/api/materias', requireAuth, async (req, res) => {
+  try {
+    const r = await db.query('SELECT * FROM materias WHERE activo = 1 ORDER BY nombre');
+    res.json({ materias: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/materias/todas', requireAdmin, (req, res) => {
-  db.all('SELECT * FROM materias ORDER BY nombre', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ materias: rows });
-  });
+app.get('/api/materias/todas', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('SELECT * FROM materias ORDER BY nombre');
+    res.json({ materias: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/materias', requireAdmin, (req, res) => {
-  const { nombre, descripcion } = req.body;
-  if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
-  db.run('INSERT INTO materias (nombre, descripcion) VALUES (?, ?)', [nombre, descripcion || ''], function(err) {
-    if (err) {
-      if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'La materia ya existe' });
-      return res.status(500).json({ error: err.message });
-    }
-    res.json({ id: this.lastID, message: 'Materia creada' });
-  });
-});
-app.put('/api/materias/:id', requireAdmin, (req, res) => {
-  const { nombre, descripcion, activo } = req.body;
-  db.run('UPDATE materias SET nombre=?, descripcion=?, activo=? WHERE id=?',
-    [nombre, descripcion, activo, req.params.id],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      if (this.changes === 0) return res.status(404).json({ error: 'No encontrada' });
-      res.json({ message: 'Materia actualizada' });
-    });
-});
-app.delete('/api/materias/:id', requireAdmin, (req, res) => {
-  db.run('DELETE FROM materias WHERE id = ?', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'No encontrada' });
-    res.json({ message: 'Materia eliminada' });
-  });
-});
-
-// ============ USUARIOS (Admin) ============
-app.get('/api/usuarios', requireAdmin, (req, res) => {
-  db.all('SELECT id, usuario, nombre_completo, rol, activo, creado_en FROM usuarios ORDER BY id', [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ usuarios: rows });
-  });
-});
-app.post('/api/usuarios', requireAdmin, (req, res) => {
-  const { usuario, password, nombre_completo, rol } = req.body;
-  if (!usuario || !password || !nombre_completo) return res.status(400).json({ error: 'Todos los campos son requeridos' });
-  const hash = bcrypt.hashSync(password, 10);
-  db.run('INSERT INTO usuarios (usuario, password, nombre_completo, rol) VALUES (?, ?, ?, ?)',
-    [usuario, hash, nombre_completo, rol || 'estudiante'], function(err) {
-      if (err) { if (err.message.includes('UNIQUE')) return res.status(400).json({ error: 'El usuario ya existe' }); return res.status(500).json({ error: err.message }); }
-      res.json({ id: this.lastID, message: 'Usuario creado' });
-    });
-});
-app.put('/api/usuarios/:id', requireAdmin, (req, res) => {
-  const { id } = req.params;
-  const { nombre_completo, rol, activo, password } = req.body;
-  let sql = 'UPDATE usuarios SET nombre_completo = ?, rol = ?, activo = ?';
-  let params = [nombre_completo, rol, activo];
-  if (password && password.trim()) { sql += ', password = ?'; params.push(bcrypt.hashSync(password, 10)); }
-  sql += ' WHERE id = ?'; params.push(id);
-  db.run(sql, params, function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Usuario no encontrado' });
-    res.json({ message: 'Usuario actualizado' });
-  });
-});
-app.delete('/api/usuarios/:id', requireAdmin, (req, res) => {
-  db.run('DELETE FROM usuarios WHERE id = ? AND rol != "admin"', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'Usuario no encontrado o es admin' });
-    res.json({ message: 'Usuario eliminado' });
-  });
-});
-
-// ============ PREGUNTAS (Admin) ============
-app.get('/api/preguntas', requireAuth, (req, res) => {
-  const { materia_id } = req.query;
-  let sql = 'SELECT p.*, m.nombre as materia_nombre FROM preguntas p LEFT JOIN materias m ON p.materia_id = m.id ORDER BY p.id DESC';
-  let params = [];
-  if (materia_id) {
-    sql = 'SELECT p.*, m.nombre as materia_nombre FROM preguntas p LEFT JOIN materias m ON p.materia_id = m.id WHERE p.materia_id = ? ORDER BY p.id DESC';
-    params = [materia_id];
+app.post('/api/materias', requireAdmin, async (req, res) => {
+  try {
+    const { nombre, descripcion } = req.body;
+    if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
+    const r = await db.query('INSERT INTO materias (nombre, descripcion) VALUES ($1, $2) RETURNING id', [nombre, descripcion || '']);
+    res.json({ id: r.rows[0].id, message: 'Materia creada' });
+  } catch (e) {
+    if (e.message.includes('unique')) return res.status(400).json({ error: 'La materia ya existe' });
+    res.status(500).json({ error: e.message });
   }
-  db.all(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ preguntas: rows });
-  });
+});
+app.put('/api/materias/:id', requireAdmin, async (req, res) => {
+  try {
+    const { nombre, descripcion, activo } = req.body;
+    const r = await db.query('UPDATE materias SET nombre=$1, descripcion=$2, activo=$3 WHERE id=$4', [nombre, descripcion, activo, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Materia actualizada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/materias/:id', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('DELETE FROM materias WHERE id = $1', [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Materia eliminada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============ USUARIOS ============
+app.get('/api/usuarios', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('SELECT id, usuario, nombre_completo, rol, activo, creado_en FROM usuarios ORDER BY id');
+    res.json({ usuarios: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/usuarios', requireAdmin, async (req, res) => {
+  try {
+    const { usuario, password, nombre_completo, rol } = req.body;
+    if (!usuario || !password || !nombre_completo) return res.status(400).json({ error: 'Todos los campos son requeridos' });
+    const hash = bcrypt.hashSync(password, 10);
+    const r = await db.query('INSERT INTO usuarios (usuario, password, nombre_completo, rol) VALUES ($1, $2, $3, $4) RETURNING id', [usuario, hash, nombre_completo, rol || 'estudiante']);
+    res.json({ id: r.rows[0].id, message: 'Usuario creado' });
+  } catch (e) {
+    if (e.message.includes('unique')) return res.status(400).json({ error: 'El usuario ya existe' });
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put('/api/usuarios/:id', requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre_completo, rol, activo, password } = req.body;
+    if (password && password.trim()) {
+      await db.query('UPDATE usuarios SET nombre_completo=$1, rol=$2, activo=$3, password=$4 WHERE id=$5', [nombre_completo, rol, activo, bcrypt.hashSync(password, 10), id]);
+    } else {
+      await db.query('UPDATE usuarios SET nombre_completo=$1, rol=$2, activo=$3 WHERE id=$4', [nombre_completo, rol, activo, id]);
+    }
+    res.json({ message: 'Usuario actualizado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/usuarios/:id', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('DELETE FROM usuarios WHERE id = $1 AND rol != $2', [req.params.id, 'admin']);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Usuario no encontrado o es admin' });
+    res.json({ message: 'Usuario eliminado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============ PREGUNTAS ============
+app.get('/api/preguntas', requireAuth, async (req, res) => {
+  try {
+    const { materia_id } = req.query;
+    let sql = 'SELECT p.*, m.nombre as materia_nombre FROM preguntas p LEFT JOIN materias m ON p.materia_id = m.id';
+    let params = [];
+    if (materia_id) { sql += ' WHERE p.materia_id = $1'; params = [materia_id]; }
+    sql += ' ORDER BY p.id DESC';
+    const r = await db.query(sql, params);
+    res.json({ preguntas: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 const uploadPregunta = upload.fields([
   { name: 'imagen', maxCount: 1 },
@@ -292,25 +285,25 @@ const uploadPregunta = upload.fields([
 ]);
 
 app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
-  const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id } = req.body;
-  if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
   try {
+    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id } = req.body;
+    if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
     let imagen = null, imgA = null, imgB = null, imgC = null, imgD = null;
     if (req.files && req.files['imagen']) imagen = await uploadToCloudinary(req.files['imagen'][0].buffer, 'examen/preguntas');
     if (req.files && req.files['imagen_opcion_a']) imgA = await uploadToCloudinary(req.files['imagen_opcion_a'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_b']) imgB = await uploadToCloudinary(req.files['imagen_opcion_b'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_c']) imgC = await uploadToCloudinary(req.files['imagen_opcion_c'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
-    db.run('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD],
-      function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ id: this.lastID, message: 'Pregunta creada' }); });
-  } catch (e) { return res.status(500).json({ error: 'Error subiendo imagen: ' + e.message }); }
+    const r = await db.query('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id',
+      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD]);
+    res.json({ id: r.rows[0].id, message: 'Pregunta creada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => {
-  const { id } = req.params;
-  const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, imagen_existente, materia_id,
-          imagen_opcion_a_existente, imagen_opcion_b_existente, imagen_opcion_c_existente, imagen_opcion_d_existente } = req.body;
   try {
+    const { id } = req.params;
+    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, imagen_existente, materia_id,
+            imagen_opcion_a_existente, imagen_opcion_b_existente, imagen_opcion_c_existente, imagen_opcion_d_existente } = req.body;
     let imagen = imagen_existente || null;
     let imgA = imagen_opcion_a_existente || null;
     let imgB = imagen_opcion_b_existente || null;
@@ -321,193 +314,196 @@ app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => 
     if (req.files && req.files['imagen_opcion_b']) imgB = await uploadToCloudinary(req.files['imagen_opcion_b'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_c']) imgC = await uploadToCloudinary(req.files['imagen_opcion_c'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
-    db.run('UPDATE preguntas SET texto=?, imagen=?, opcion_a=?, opcion_b=?, opcion_c=?, opcion_d=?, respuesta_correcta=?, materia_id=?, imagen_opcion_a=?, imagen_opcion_b=?, imagen_opcion_c=?, imagen_opcion_d=? WHERE id=?',
-      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, imgA, imgB, imgC, imgD, id],
-      function(err) { if (err) return res.status(500).json({ error: err.message }); if (this.changes === 0) return res.status(404).json({ error: 'No encontrada' }); res.json({ message: 'Pregunta actualizada' }); });
-  } catch (e) { return res.status(500).json({ error: 'Error subiendo imagen: ' + e.message }); }
+    const r = await db.query('UPDATE preguntas SET texto=$1, imagen=$2, opcion_a=$3, opcion_b=$4, opcion_c=$5, opcion_d=$6, respuesta_correcta=$7, materia_id=$8, imagen_opcion_a=$9, imagen_opcion_b=$10, imagen_opcion_c=$11, imagen_opcion_d=$12 WHERE id=$13',
+      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, imgA, imgB, imgC, imgD, id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Pregunta actualizada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/preguntas/:id', requireAdmin, (req, res) => {
-  db.run('DELETE FROM preguntas WHERE id = ?', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
-    if (this.changes === 0) return res.status(404).json({ error: 'No encontrada' });
+app.delete('/api/preguntas/:id', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('DELETE FROM preguntas WHERE id = $1', [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
     res.json({ message: 'Pregunta eliminada' });
-  });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ============ CUESTIONARIOS (Admin) ============
-app.get('/api/cuestionarios', requireAuth, (req, res) => {
-  const isAdmin = req.session.user.rol === 'admin';
-  const { materia_id } = req.query;
-  let sql = `SELECT c.*, m.nombre as materia_nombre, 
-    (SELECT COUNT(*) FROM cuestionario_preguntas WHERE cuestionario_id = c.id) as total_preguntas
-    FROM cuestionarios c LEFT JOIN materias m ON c.materia_id = m.id`;
-  let params = [];
-  const conditions = [];
-  if (!isAdmin) conditions.push('c.activo = 1');
-  if (materia_id) conditions.push('c.materia_id = ' + materia_id);
-  if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
-  sql += ' ORDER BY c.id DESC';
-  db.all(sql, params, (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ cuestionarios: rows });
-  });
+// ============ CUESTIONARIOS ============
+app.get('/api/cuestionarios', requireAuth, async (req, res) => {
+  try {
+    const isAdmin = req.session.user.rol === 'admin';
+    const { materia_id } = req.query;
+    let sql = `SELECT c.*, m.nombre as materia_nombre, 
+      (SELECT COUNT(*) FROM cuestionario_preguntas WHERE cuestionario_id = c.id) as total_preguntas
+      FROM cuestionarios c LEFT JOIN materias m ON c.materia_id = m.id`;
+    let params = [];
+    const conditions = [];
+    if (!isAdmin) conditions.push('c.activo = 1');
+    if (materia_id) { conditions.push('c.materia_id = $' + (params.length + 1)); params.push(materia_id); }
+    if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
+    sql += ' ORDER BY c.id DESC';
+    const r = await db.query(sql, params);
+    res.json({ cuestionarios: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/cuestionarios', requireAdmin, (req, res) => {
-  const { titulo, descripcion, tiempo_limite, materia_id } = req.body;
-  if (!titulo) return res.status(400).json({ error: 'Titulo requerido' });
-  db.run('INSERT INTO cuestionarios (titulo, descripcion, tiempo_limite, materia_id, creado_por) VALUES (?, ?, ?, ?, ?)',
-    [titulo, descripcion || '', tiempo_limite || 60, materia_id || null, req.session.user.id],
-    function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ id: this.lastID, message: 'Cuestionario creado' }); });
+app.post('/api/cuestionarios', requireAdmin, async (req, res) => {
+  try {
+    const { titulo, descripcion, tiempo_limite, materia_id } = req.body;
+    if (!titulo) return res.status(400).json({ error: 'Titulo requerido' });
+    const r = await db.query('INSERT INTO cuestionarios (titulo, descripcion, tiempo_limite, materia_id, creado_por) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+      [titulo, descripcion || '', tiempo_limite || 60, materia_id || null, req.session.user.id]);
+    res.json({ id: r.rows[0].id, message: 'Cuestionario creado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/cuestionarios/:id', requireAdmin, (req, res) => {
-  const { titulo, descripcion, tiempo_limite, activo, materia_id } = req.body;
-  db.run('UPDATE cuestionarios SET titulo=?, descripcion=?, tiempo_limite=?, activo=?, materia_id=? WHERE id=?',
-    [titulo, descripcion, tiempo_limite, activo, materia_id || null, req.params.id],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      if (this.changes === 0) return res.status(404).json({ error: 'No encontrado' });
-      res.json({ message: 'Actualizado' });
-    });
+app.put('/api/cuestionarios/:id', requireAdmin, async (req, res) => {
+  try {
+    const { titulo, descripcion, tiempo_limite, activo, materia_id } = req.body;
+    const r = await db.query('UPDATE cuestionarios SET titulo=$1, descripcion=$2, tiempo_limite=$3, activo=$4, materia_id=$5 WHERE id=$6',
+      [titulo, descripcion, tiempo_limite, activo, materia_id || null, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
+    res.json({ message: 'Actualizado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/cuestionarios/:id/publicar', requireAdmin, (req, res) => {
-  const { activo } = req.body;
-  db.run('UPDATE cuestionarios SET activo=? WHERE id=?',
-    [activo ? 1 : 0, req.params.id],
-    function(err) {
-      if (err) return res.status(500).json({ error: err.message });
-      if (this.changes === 0) return res.status(404).json({ error: 'No encontrado' });
-      res.json({ message: activo ? 'Publicado' : 'Despublicado' });
-    });
+app.put('/api/cuestionarios/:id/publicar', requireAdmin, async (req, res) => {
+  try {
+    const { activo } = req.body;
+    const r = await db.query('UPDATE cuestionarios SET activo=$1 WHERE id=$2', [activo ? 1 : 0, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
+    res.json({ message: activo ? 'Publicado' : 'Despublicado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/cuestionarios/:id', requireAdmin, (req, res) => {
-  db.run('DELETE FROM cuestionarios WHERE id = ?', [req.params.id], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.delete('/api/cuestionarios/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.query('DELETE FROM cuestionarios WHERE id = $1', [req.params.id]);
     res.json({ message: 'Eliminado' });
-  });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/cuestionarios/:id/preguntas', requireAdmin, (req, res) => {
-  const { pregunta_id, orden } = req.body;
-  db.run('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES (?, ?, ?)',
-    [req.params.id, pregunta_id, orden || 0],
-    function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ id: this.lastID, message: 'Pregunta agregada' }); });
+app.post('/api/cuestionarios/:id/preguntas', requireAdmin, async (req, res) => {
+  try {
+    const { pregunta_id, orden } = req.body;
+    const r = await db.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3) RETURNING id',
+      [req.params.id, pregunta_id, orden || 0]);
+    res.json({ id: r.rows[0].id, message: 'Pregunta agregada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/cuestionarios/:cid/preguntas/:pid', requireAdmin, (req, res) => {
-  db.run('DELETE FROM cuestionario_preguntas WHERE cuestionario_id = ? AND pregunta_id = ?', [req.params.cid, req.params.pid], function(err) {
-    if (err) return res.status(500).json({ error: err.message });
+app.delete('/api/cuestionarios/:cid/preguntas/:pid', requireAdmin, async (req, res) => {
+  try {
+    await db.query('DELETE FROM cuestionario_preguntas WHERE cuestionario_id = $1 AND pregunta_id = $2', [req.params.cid, req.params.pid]);
     res.json({ message: 'Pregunta removida' });
-  });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/cuestionarios/:id/preguntas', requireAuth, (req, res) => {
-  db.all(`SELECT p.*, m.nombre as materia_nombre FROM preguntas p
-    JOIN cuestionario_preguntas cp ON p.id = cp.pregunta_id
-    LEFT JOIN materias m ON p.materia_id = m.id
-    WHERE cp.cuestionario_id = ? ORDER BY cp.orden`, [req.params.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ preguntas: rows });
-  });
-});
-
-// ============ INTENTOS (Estudiante) ============
-app.post('/api/intentos', requireAuth, (req, res) => {
-  const { cuestionario_id } = req.body;
-  db.get('SELECT COUNT(*) as total FROM cuestionario_preguntas WHERE cuestionario_id = ?', [cuestionario_id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    db.run('INSERT INTO intentos (usuario_id, cuestionario_id, total_preguntas) VALUES (?, ?, ?)',
-      [req.session.user.id, cuestionario_id, row.total],
-      function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ id: this.lastID, total: row.total }); });
-  });
-});
-app.post('/api/intentos/:id/responder', requireAuth, (req, res) => {
-  const { pregunta_id, respuesta } = req.body;
-  db.get('SELECT respuesta_correcta FROM preguntas WHERE id = ?', [pregunta_id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (!row) return res.status(404).json({ error: 'Pregunta no encontrada' });
-    const esCorrecta = row.respuesta_correcta === respuesta.toUpperCase() ? 1 : 0;
-    db.run('INSERT INTO intento_respuestas (intento_id, pregunta_id, respuesta_seleccionada, es_correcta) VALUES (?, ?, ?, ?)',
-      [req.params.id, pregunta_id, respuesta.toUpperCase(), esCorrecta],
-      function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ es_correcta: esCorrecta, correcta: row.respuesta_correcta }); });
-  });
-});
-app.put('/api/intentos/:id/finalizar', requireAuth, (req, res) => {
-  db.get('SELECT COUNT(*) as correctas FROM intento_respuestas WHERE intento_id = ? AND es_correcta = 1', [req.params.id], (err, row) => {
-    if (err) return res.status(500).json({ error: err.message });
-    db.run('UPDATE intentos SET puntuacion = ?, completado = 1, fin_en = CURRENT_TIMESTAMP WHERE id = ?',
-      [row.correctas, req.params.id],
-      function(err) { if (err) return res.status(500).json({ error: err.message }); res.json({ puntuacion: row.correctas }); });
-  });
-});
-app.get('/api/intentos/:id/resultados', requireAuth, (req, res) => {
-  db.all(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen
-    FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = ?`, [req.params.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    db.get('SELECT * FROM intentos WHERE id = ?', [req.params.id], (err2, intento) => {
-      res.json({ respuestas: rows, intento });
-    });
-  });
-});
-app.get('/api/mis-intentos', requireAuth, (req, res) => {
-  db.all(`SELECT i.*, COALESCE(c.titulo, 'Cuestionario eliminado') as cuestionario_titulo FROM intentos i
-    LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
-    WHERE i.usuario_id = ? ORDER BY i.inicio_en DESC`, [req.session.user.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ intentos: rows });
-  });
+app.get('/api/cuestionarios/:id/preguntas', requireAuth, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT p.*, m.nombre as materia_nombre FROM preguntas p
+      JOIN cuestionario_preguntas cp ON p.id = cp.pregunta_id
+      LEFT JOIN materias m ON p.materia_id = m.id
+      WHERE cp.cuestionario_id = $1 ORDER BY cp.orden`, [req.params.id]);
+    res.json({ preguntas: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ============ INFORMES (Admin) ============
-app.get('/api/admin/estudiantes-con-intentos', requireAdmin, (req, res) => {
-  db.all(`SELECT u.id, u.usuario, u.nombre_completo,
-    (SELECT COUNT(*) FROM intentos WHERE usuario_id = u.id) as total_intentos,
-    (SELECT COUNT(*) FROM intentos WHERE usuario_id = u.id AND completado = 1) as intentos_completados,
-    (SELECT ROUND(AVG(CASE WHEN total_preguntas > 0 THEN ROUND(puntuacion * 100.0 / total_preguntas) ELSE 0 END), 1) FROM intentos WHERE usuario_id = u.id AND completado = 1) as promedio
-    FROM usuarios u WHERE u.rol = 'estudiante' AND u.activo = 1 ORDER BY u.nombre_completo`, [], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ estudiantes: rows });
-  });
+// ============ INTENTOS ============
+app.post('/api/intentos', requireAuth, async (req, res) => {
+  try {
+    const { cuestionario_id } = req.body;
+    const total = await db.query('SELECT COUNT(*) as total FROM cuestionario_preguntas WHERE cuestionario_id = $1', [cuestionario_id]);
+    const r = await db.query('INSERT INTO intentos (usuario_id, cuestionario_id, total_preguntas) VALUES ($1,$2,$3) RETURNING id',
+      [req.session.user.id, cuestionario_id, parseInt(total.rows[0].total)]);
+    res.json({ id: r.rows[0].id, total: parseInt(total.rows[0].total) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/admin/usuarios/:id/intentos', requireAdmin, (req, res) => {
-  db.all(`SELECT i.*, c.titulo as cuestionario_titulo, c.materia_id,
-    COALESCE(m.nombre, 'Cuestionario eliminado') as materia_nombre,
-    (SELECT COUNT(*) FROM intento_respuestas WHERE intento_id = i.id AND es_correcta = 1) as correctas,
-    (SELECT COUNT(*) FROM intento_respuestas WHERE intento_id = i.id AND es_correcta = 0) as incorrectas
-    FROM intentos i
-    LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
-    LEFT JOIN materias m ON c.materia_id = m.id
-    WHERE i.usuario_id = ? ORDER BY i.inicio_en DESC`, [req.params.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ intentos: rows });
-  });
+app.post('/api/intentos/:id/responder', requireAuth, async (req, res) => {
+  try {
+    const { pregunta_id, respuesta } = req.body;
+    const p = await db.query('SELECT respuesta_correcta FROM preguntas WHERE id = $1', [pregunta_id]);
+    if (p.rows.length === 0) return res.status(404).json({ error: 'Pregunta no encontrada' });
+    const esCorrecta = p.rows[0].respuesta_correcta === respuesta.toUpperCase() ? 1 : 0;
+    await db.query('INSERT INTO intento_respuestas (intento_id, pregunta_id, respuesta_seleccionada, es_correcta) VALUES ($1,$2,$3,$4)',
+      [req.params.id, pregunta_id, respuesta.toUpperCase(), esCorrecta]);
+    res.json({ es_correcta: esCorrecta, correcta: p.rows[0].respuesta_correcta });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/admin/intentos/:id/detalle', requireAdmin, (req, res) => {
-  db.all(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen
-    FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = ? ORDER BY ir.id`, [req.params.id], (err, rows) => {
-    if (err) return res.status(500).json({ error: err.message });
-    db.get(`SELECT i.*, COALESCE(c.titulo, 'Cuestionario eliminado') as cuestionario_titulo, u.nombre_completo as estudiante_nombre, u.usuario as estudiante_usuario,
+app.put('/api/intentos/:id/finalizar', requireAuth, async (req, res) => {
+  try {
+    const r = await db.query('SELECT COUNT(*) as correctas FROM intento_respuestas WHERE intento_id = $1 AND es_correcta = 1', [req.params.id]);
+    await db.query('UPDATE intentos SET puntuacion = $1, completado = 1, fin_en = CURRENT_TIMESTAMP WHERE id = $2', [parseInt(r.rows[0].correctas), req.params.id]);
+    res.json({ puntuacion: parseInt(r.rows[0].correctas) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/intentos/:id/resultados', requireAuth, async (req, res) => {
+  try {
+    const resp = await db.query(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen, p.imagen_opcion_a, p.imagen_opcion_b, p.imagen_opcion_c, p.imagen_opcion_d
+      FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = $1`, [req.params.id]);
+    const intento = await db.query('SELECT * FROM intentos WHERE id = $1', [req.params.id]);
+    res.json({ respuestas: resp.rows, intento: intento.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/mis-intentos', requireAuth, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT i.*, COALESCE(c.titulo, 'Cuestionario eliminado') as cuestionario_titulo FROM intentos i
+      LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
+      WHERE i.usuario_id = $1 ORDER BY i.inicio_en DESC`, [req.session.user.id]);
+    res.json({ intentos: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============ INFORMES ============
+app.get('/api/admin/estudiantes-con-intentos', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT u.id, u.usuario, u.nombre_completo,
+      (SELECT COUNT(*) FROM intentos WHERE usuario_id = u.id) as total_intentos,
+      (SELECT COUNT(*) FROM intentos WHERE usuario_id = u.id AND completado = 1) as intentos_completados,
+      (SELECT ROUND(AVG(CASE WHEN total_preguntas > 0 THEN ROUND(puntuacion * 100.0 / total_preguntas) ELSE 0 END), 1) FROM intentos WHERE usuario_id = u.id AND completado = 1) as promedio
+      FROM usuarios u WHERE u.rol = 'estudiante' AND u.activo = 1 ORDER BY u.nombre_completo`);
+    res.json({ estudiantes: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/admin/usuarios/:id/intentos', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT i.*, c.titulo as cuestionario_titulo, c.materia_id,
+      COALESCE(m.nombre, 'Cuestionario eliminado') as materia_nombre,
+      (SELECT COUNT(*) FROM intento_respuestas WHERE intento_id = i.id AND es_correcta = 1) as correctas,
+      (SELECT COUNT(*) FROM intento_respuestas WHERE intento_id = i.id AND es_correcta = 0) as incorrectas
+      FROM intentos i
+      LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
+      LEFT JOIN materias m ON c.materia_id = m.id
+      WHERE i.usuario_id = $1 ORDER BY i.inicio_en DESC`, [req.params.id]);
+    res.json({ intentos: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/admin/intentos/:id/detalle', requireAdmin, async (req, res) => {
+  try {
+    const resp = await db.query(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen
+      FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = $1 ORDER BY ir.id`, [req.params.id]);
+    const intento = await db.query(`SELECT i.*, COALESCE(c.titulo, 'Cuestionario eliminado') as cuestionario_titulo, u.nombre_completo as estudiante_nombre, u.usuario as estudiante_usuario,
       COALESCE(m.nombre, 'Sin materia') as materia_nombre
       FROM intentos i
       LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
       JOIN usuarios u ON i.usuario_id = u.id
       LEFT JOIN materias m ON c.materia_id = m.id
-      WHERE i.id = ?`, [req.params.id], (err2, intento) => {
-      res.json({ respuestas: rows, intento });
-    });
-  });
+      WHERE i.id = $1`, [req.params.id]);
+    res.json({ respuestas: resp.rows, intento: intento.rows[0] });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ============ STATS (Admin) ============
-app.get('/api/stats', requireAdmin, (req, res) => {
-  const stats = {};
-  let pending = 4;
-  function done() { if (--pending === 0) res.json(stats); }
-  db.get('SELECT COUNT(*) as total FROM usuarios WHERE rol="estudiante"', [], (e, r) => { stats.totalEstudiantes = r ? r.total : 0; done(); });
-  db.get('SELECT COUNT(*) as total FROM preguntas', [], (e, r) => { stats.totalPreguntas = r ? r.total : 0; done(); });
-  db.get('SELECT COUNT(*) as total FROM cuestionarios', [], (e, r) => { stats.totalCuestionarios = r ? r.total : 0; done(); });
-  db.get('SELECT COUNT(*) as total FROM intentos WHERE completado=1', [], (e, r) => { stats.totalIntentos = r ? r.total : 0; done(); });
+// ============ STATS ============
+app.get('/api/stats', requireAdmin, async (req, res) => {
+  try {
+    const stats = {};
+    const est = await db.query('SELECT COUNT(*) as total FROM usuarios WHERE rol=$1', ['estudiante']);
+    stats.totalEstudiantes = parseInt(est.rows[0].total);
+    const pre = await db.query('SELECT COUNT(*) as total FROM preguntas');
+    stats.totalPreguntas = parseInt(pre.rows[0].total);
+    const cues = await db.query('SELECT COUNT(*) as total FROM cuestionarios');
+    stats.totalCuestionarios = parseInt(cues.rows[0].total);
+    const int = await db.query('SELECT COUNT(*) as total FROM intentos WHERE completado=1');
+    stats.totalIntentos = parseInt(int.rows[0].total);
+    res.json(stats);
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ============ URL PUBLICA ============
 app.get('/api/url-publica', requireAdmin, (req, res) => {
-  const fs = require('fs');
   try {
     const url = fs.readFileSync(path.join(__dirname, 'url_actual.txt'), 'utf8').trim();
     res.json({ url });
@@ -521,4 +517,4 @@ app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'public', 'index.ht
 app.get('/admin/*', (req, res) => res.sendFile(path.join(__dirname, 'public', req.path + '.html')));
 app.get('/student/*', (req, res) => res.sendFile(path.join(__dirname, 'public', req.path + '.html')));
 
-app.listen(PORT, '0.0.0.0', () => console.log(`Servidor: http://localhost:${PORT}\nRed: http://10.146.41.13:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => console.log(`Servidor: http://localhost:${PORT}`));
