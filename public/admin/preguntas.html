@@ -121,6 +121,12 @@ dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remov
 fi.addEventListener('change', function() { if (fi.files[0]) showPreview(fi.files[0]); });
 
 document.addEventListener('paste', function(e) {
+  // Solo pegar imagen si el foco esta en el drop zone o en el modal
+  var active = document.activeElement;
+  var isDropZone = active === dz || active.id === 'dropZone';
+  var isInModal = document.getElementById('modal').classList.contains('active');
+  if (!isDropZone && !isInModal) return;
+  
   var items = e.clipboardData && e.clipboardData.items;
   if (!items) return;
   for (var i = 0; i < items.length; i++) {
