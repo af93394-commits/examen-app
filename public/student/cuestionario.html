@@ -1,0 +1,105 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Realizar Cuestionario</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="main-content" style="margin-left:0">
+<div class="quiz-container">
+<div class="quiz-header">
+<h2 id="quizTitle">Cuestionario</h2>
+<div>
+<span id="quizProgress" style="margin-right:16px;font-weight:600"></span>
+<div class="quiz-timer" id="quizTimer">--:--</div>
+</div>
+</div>
+<div id="quizContent"></div>
+<div style="text-align:center;margin-top:24px">
+<button class="btn btn-success btn-block" id="btnFinalizar" onclick="finalizar()" style="max-width:400px;display:none">Finalizar Cuestionario</button>
+</div>
+</div>
+</div>
+<script>
+var params = new URLSearchParams(window.location.search);
+var intentoId = params.get('intento');
+var totalPreg = parseInt(params.get('total'));
+var cuestionarioId = params.get('cuestionario');
+var preguntas = [], currentIndex = 0, respuestas = {}, timerSeconds = 0, timerInterval;
+
+if (!intentoId) { window.location.href = '/student/dashboard.html'; }
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  if (d.user.rol !== 'estudiante') { window.location.href = '/'; }
+  fetch('/api/cuestionarios/' + cuestionarioId + '/preguntas').then(function(r) { return r.json(); }).then(function(d2) {
+    preguntas = d2.preguntas;
+    if (preguntas.length === 0) {
+      document.getElementById('quizContent').innerHTML = '<div class="card empty-state"><p>No hay preguntas en este cuestionario</p></div>';
+      return;
+    }
+    startTimer();
+    showQuestion(0);
+  });
+}).catch(function() { window.location.href = '/'; });
+
+function startTimer() {
+  timerInterval = setInterval(function() {
+    timerSeconds++;
+    var m = Math.floor(timerSeconds / 60).toString().padStart(2, '0');
+    var s = (timerSeconds % 60).toString().padStart(2, '0');
+    document.getElementById('quizTimer').textContent = m + ':' + s;
+  }, 1000);
+}
+
+function showQuestion(idx) {
+  currentIndex = idx;
+  var p = preguntas[idx];
+  document.getElementById('quizProgress').textContent = 'Pregunta ' + (idx + 1) + ' de ' + preguntas.length;
+  document.getElementById('quizTitle').textContent = 'Cuestionario';
+  var selected = respuestas[p.id] || '';
+  var html = '<div class="question-card"><h3>' + (idx + 1) + '. ' + p.texto + '</h3>';
+  if (p.imagen) html += '<img src="' + p.imagen + '" alt="Imagen de pregunta">';
+  ['A', 'B', 'C', 'D'].forEach(function(opt) {
+    var val = p['opcion_' + opt.toLowerCase()];
+    var imgKey = 'imagen_opcion_' + opt.toLowerCase();
+    var imgVal = p[imgKey];
+    var sel = selected === opt ? ' selected' : '';
+    html += '<div class="option' + sel + '" onclick="selectOption(' + p.id + ',\'' + opt + '\',this)">';
+    html += '<input type="radio" name="p' + p.id + '" value="' + opt + '"' + (selected === opt ? ' checked' : '') + '>';
+    html += '<strong>' + opt + ')</strong> ';
+    if (imgVal) html += '<img src="' + imgVal + '" style="max-width:200px;max-height:100px;border-radius:4px">';
+    if (val) html += '<span>' + val + '</span>';
+    html += '</div>';
+  });
+  html += '</div>';
+  html += '<div class="actions" style="justify-content:center;gap:12px">';
+  if (idx > 0) html += '<button class="btn btn-secondary" onclick="showQuestion(' + (idx - 1) + ')">&#8592; Anterior</button>';
+  if (idx < preguntas.length - 1) html += '<button class="btn btn-primary" onclick="showQuestion(' + (idx + 1) + ')">Siguiente &#8594;</button>';
+  html += '</div>';
+  document.getElementById('quizContent').innerHTML = html;
+
+  if (idx === preguntas.length - 1) document.getElementById('btnFinalizar').style.display = 'inline-flex';
+  else document.getElementById('btnFinalizar').style.display = 'none';
+}
+
+function selectOption(pid, opt, el) {
+  respuestas[pid] = opt;
+  el.parentElement.querySelectorAll('.option').forEach(function(o) { o.classList.remove('selected'); });
+  el.classList.add('selected');
+  fetch('/api/intentos/' + intentoId + '/responder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pregunta_id: pid, respuesta: opt })
+  });
+}
+
+function finalizar() {
+  if (!confirm('Seguro que desea finalizar el cuestionario?')) return;
+  clearInterval(timerInterval);
+  fetch('/api/intentos/' + intentoId + '/finalizar', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(d) {
+    window.location.href = '/student/resultados.html?intento=' + intentoId;
+  });
+}
+</script>
+</body></html>

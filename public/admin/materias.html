@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Gestionar Materias</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#9881; Admin</h2><small>Panel de control</small></div>
+<nav>
+<a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
+<a href="/admin/usuarios.html"><span class="icon">&#128100;</span><span>Usuarios</span></a>
+<a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
+<a href="/admin/cuestionarios.html"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/materias.html" class="active"><span class="icon">&#128218;</span><span>Materias</span></a>
+<a href="/admin/informes.html"><span class="icon">&#128202;</span><span>Informes</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Gestionar Materias</h1><button class="btn btn-primary" onclick="openModal()">+ Nueva Materia</button></div>
+<div class="table-container">
+<table><thead><tr><th>ID</th><th>Nombre</th><th>Descripcion</th><th>Preguntas</th><th>Cuestionarios</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="tablaMaterias"></tbody></table>
+</div>
+</div>
+<div class="modal-overlay" id="modal">
+<div class="modal">
+<button class="close" onclick="closeModal()">&times;</button>
+<h2 id="modalTitle">Nueva Materia</h2>
+<form id="materiaForm">
+<input type="hidden" id="editId">
+<div class="form-group"><label>Nombre</label><input type="text" id="fNombre" required placeholder="Ej: Matematicas"></div>
+<div class="form-group"><label>Descripcion</label><textarea id="fDesc" placeholder="Descripcion de la materia..."></textarea></div>
+<div class="form-group"><label>Estado</label><select id="fActivo"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+<button type="submit" class="btn btn-primary btn-block">Guardar</button>
+</form>
+</div>
+</div>
+<script>
+var editing = false;
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'admin') window.location.href = '/';
+}).catch(function() { window.location.href = '/'; });
+
+function load() {
+  fetch('/api/materias/todas').then(function(r) { return r.json(); }).then(function(d) {
+    var tb = document.getElementById('tablaMaterias');
+    tb.innerHTML = '';
+    var pendientes = d.materias.length;
+    if (pendientes === 0) {
+      tb.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:40px">No hay materias registradas</td></tr>';
+      return;
+    }
+    d.materias.forEach(function(m) {
+      var estadoBadge = m.activo ? 'badge-active' : 'badge-inactive';
+      var estadoLabel = m.activo ? 'Activo' : 'Inactivo';
+      Promise.all([
+        fetch('/api/preguntas?materia_id=' + m.id).then(function(r) { return r.json(); }),
+        fetch('/api/cuestionarios?materia_id=' + m.id).then(function(r) { return r.json(); })
+      ]).then(function(results) {
+        var numPreg = results[0].preguntas.length;
+        var numCuest = results[1].cuestionarios.length;
+        var row = '<tr><td>' + m.id + '</td><td><strong>' + m.nombre + '</strong></td>';
+        row += '<td>' + (m.descripcion || '-') + '</td>';
+        row += '<td><span class="badge badge-admin">' + numPreg + ' preguntas</span></td>';
+        row += '<td><span class="badge badge-student">' + numCuest + ' cuestionarios</span></td>';
+        row += '<td><span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></td>';
+        row += '<td class="actions">';
+        row += '<a href="/admin/materia.html?id=' + m.id + '" class="btn btn-sm btn-success">&#128194; Gestionar</a> ';
+        row += '<button class="btn btn-sm btn-primary" onclick=\'editMateria(' + JSON.stringify(m) + ')\'>&#9998; Editar</button> ';
+        row += '<button class="btn btn-sm btn-danger" onclick="deleteMateria(' + m.id + ')">&#128465; Eliminar</button></td></tr>';
+        tb.innerHTML += row;
+      });
+    });
+  });
+}
+
+function openModal() {
+  editing = false;
+  document.getElementById('modalTitle').textContent = 'Nueva Materia';
+  document.getElementById('materiaForm').reset();
+  document.getElementById('editId').value = '';
+  document.getElementById('modal').classList.add('active');
+}
+
+function editMateria(m) {
+  editing = true;
+  document.getElementById('modalTitle').textContent = 'Editar Materia';
+  document.getElementById('editId').value = m.id;
+  document.getElementById('fNombre').value = m.nombre;
+  document.getElementById('fDesc').value = m.descripcion || '';
+  document.getElementById('fActivo').value = m.activo;
+  document.getElementById('modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+}
+
+document.getElementById('materiaForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var id = document.getElementById('editId').value;
+  var body = {
+    nombre: document.getElementById('fNombre').value,
+    descripcion: document.getElementById('fDesc').value,
+    activo: parseInt(document.getElementById('fActivo').value)
+  };
+  if (editing) {
+    await fetch('/api/materias/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } else {
+    await fetch('/api/materias', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+  closeModal();
+  load();
+});
+
+function deleteMateria(id) {
+  if (!confirm('Eliminar esta materia?')) return;
+  fetch('/api/materias/' + id, { method: 'DELETE' }).then(function() { load(); });
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+
+load();
+</script>
+</body></html>

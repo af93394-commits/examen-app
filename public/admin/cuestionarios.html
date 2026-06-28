@@ -1,0 +1,247 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Gestionar Cuestionarios</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#9881; Admin</h2><small>Panel de control</small></div>
+<nav>
+<a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
+<a href="/admin/usuarios.html"><span class="icon">&#128100;</span><span>Usuarios</span></a>
+<a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
+<a href="/admin/cuestionarios.html" class="active"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/materias.html"><span class="icon">&#128218;</span><span>Materias</span></a>
+<a href="/admin/informes.html"><span class="icon">&#128202;</span><span>Informes</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Cuestionarios</h1><button class="btn btn-primary" onclick="openNew()">+ Nuevo Cuestionario</button></div>
+<div id="listaCuestionarios"></div>
+</div>
+
+<div class="modal-overlay" id="modalNew">
+<div class="modal">
+<button class="close" onclick="closeNew()">&times;</button>
+<h2>Nuevo Cuestionario</h2>
+<form id="newForm">
+<div class="form-group"><label>Materia</label><select id="fMateria"><option value="">Sin materia</option></select></div>
+<div class="form-group"><label>Titulo</label><input type="text" id="fTitulo" required></div>
+<div class="form-group"><label>Descripcion</label><textarea id="fDesc"></textarea></div>
+<div class="form-group"><label>Tiempo limite (minutos)</label><input type="number" id="fTiempo" value="60" min="5" max="300"></div>
+<button type="submit" class="btn btn-primary btn-block">Crear Cuestionario</button>
+</form>
+</div>
+</div>
+
+<div class="modal-overlay" id="modalEdit">
+<div class="modal">
+<button class="close" onclick="closeEdit()">&times;</button>
+<h2>Editar Cuestionario</h2>
+<form id="editForm">
+<input type="hidden" id="eId">
+<div class="form-group"><label>Materia</label><select id="eMateria"><option value="">Sin materia</option></select></div>
+<div class="form-group"><label>Titulo</label><input type="text" id="eTitulo" required></div>
+<div class="form-group"><label>Descripcion</label><textarea id="eDesc"></textarea></div>
+<div class="form-group"><label>Tiempo limite (minutos)</label><input type="number" id="eTiempo" min="5" max="300"></div>
+<div class="form-group"><label>Estado</label><select id="eActivo"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+<button type="submit" class="btn btn-primary btn-block">Guardar Cambios</button>
+</form>
+</div>
+</div>
+
+<div class="modal-overlay" id="modalAsig">
+<div class="modal" style="max-width:700px">
+<button class="close" onclick="closeAsig()">&times;</button>
+<h2>Asignar Preguntas - <span id="asigTitle"></span></h2>
+<div style="margin-bottom:12px">
+<label style="font-weight:600">Filtrar por materia:</label>
+<select id="filtroAsigMateria" onchange="loadAsigPreguntas()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;width:100%;margin-top:4px">
+<option value="">Todas las materias</option>
+</select>
+</div>
+<div id="asigPreguntas" style="max-height:350px;overflow-y:auto;margin:16px 0"></div>
+<h3 style="margin:16px 0 8px">Preguntas en el cuestionario</h3>
+<div id="asigActuales"></div>
+</div>
+</div>
+
+<script>
+var materiasList = [], currentCuestId = 0;
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'admin') window.location.href = '/';
+  loadMaterias();
+}).catch(function() { window.location.href = '/'; });
+
+function loadMaterias() {
+  fetch('/api/materias').then(function(r) { return r.json(); }).then(function(d) {
+    materiasList = d.materias;
+    var selNew = document.getElementById('fMateria');
+    var selEdit = document.getElementById('eMateria');
+    var selFiltro = document.getElementById('filtroAsigMateria');
+    materiasList.forEach(function(m) {
+      selNew.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
+      selEdit.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
+      selFiltro.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
+    });
+    load();
+  });
+}
+
+function load() {
+  fetch('/api/cuestionarios').then(function(r) { return r.json(); }).then(function(d) {
+    var c = document.getElementById('listaCuestionarios');
+    c.innerHTML = '';
+    if (d.cuestionarios.length === 0) {
+      c.innerHTML = '<div class="card empty-state"><div class="icon">&#128221;</div><p>No hay cuestionarios creados</p></div>';
+      return;
+    }
+    d.cuestionarios.forEach(function(q) {
+      var materia = q.materia_nombre || 'Sin materia';
+      var estadoBadge = q.activo ? 'badge-active' : 'badge-inactive';
+      var estadoLabel = q.activo ? 'Activo' : 'Inactivo';
+      var publishLabel = q.activo ? '&#128065; Despublicar' : '&#128221; Publicar';
+      var toggleClass = q.activo ? 'btn-secondary' : 'btn-success';
+      var newActivo = q.activo ? 0 : 1;
+      var totalP = q.total_preguntas || 0;
+      var html = '<div class="card">';
+      html += '<div class="card-header"><h3>' + q.titulo + '</h3>';
+      html += '<div><span class="badge badge-admin" style="margin-right:6px">' + materia + '</span>';
+      html += '<span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></div></div>';
+      if (q.descripcion) html += '<p style="color:#64748b;margin-bottom:8px">' + q.descripcion + '</p>';
+      html += '<p style="color:#64748b;margin-bottom:12px">' + totalP + ' preguntas | Tiempo: ' + q.tiempo_limite + ' min</p>';
+      html += '<div class="actions">';
+      html += '<button class="btn btn-sm btn-primary" onclick="openAsig(' + q.id + ',\'' + q.titulo.replace(/'/g, "\\'") + '\')">&#128196; Asignar Preguntas</button> ';
+      html += '<button class="btn btn-sm btn-secondary" onclick=\'editCuest(' + JSON.stringify(q) + ')\'>&#9998; Editar</button> ';
+      html += '<button class="btn btn-sm ' + toggleClass + '" onclick="togglePublicar(' + q.id + ',' + newActivo + ')">' + publishLabel + '</button> ';
+      html += '<button class="btn btn-sm btn-danger" onclick="deleteCuest(' + q.id + ')">&#128465; Eliminar</button>';
+      html += '</div></div>';
+      c.innerHTML += html;
+    });
+  });
+}
+
+function openNew() {
+  document.getElementById('fMateria').value = '';
+  document.getElementById('newForm').reset();
+  document.getElementById('modalNew').classList.add('active');
+}
+function closeNew() { document.getElementById('modalNew').classList.remove('active'); }
+
+document.getElementById('newForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  await fetch('/api/cuestionarios', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      titulo: document.getElementById('fTitulo').value,
+      descripcion: document.getElementById('fDesc').value,
+      tiempo_limite: parseInt(document.getElementById('fTiempo').value),
+      materia_id: document.getElementById('fMateria').value || null
+    })
+  });
+  closeNew();
+  load();
+});
+
+function editCuest(q) {
+  document.getElementById('eId').value = q.id;
+  document.getElementById('eMateria').value = q.materia_id || '';
+  document.getElementById('eTitulo').value = q.titulo;
+  document.getElementById('eDesc').value = q.descripcion || '';
+  document.getElementById('eTiempo').value = q.tiempo_limite;
+  document.getElementById('eActivo').value = q.activo;
+  document.getElementById('modalEdit').classList.add('active');
+}
+function closeEdit() { document.getElementById('modalEdit').classList.remove('active'); }
+
+document.getElementById('editForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var id = document.getElementById('eId').value;
+  await fetch('/api/cuestionarios/' + id, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      titulo: document.getElementById('eTitulo').value,
+      descripcion: document.getElementById('eDesc').value,
+      tiempo_limite: parseInt(document.getElementById('eTiempo').value),
+      activo: parseInt(document.getElementById('eActivo').value),
+      materia_id: document.getElementById('eMateria').value || null
+    })
+  });
+  closeEdit();
+  load();
+});
+
+function openAsig(id, title) {
+  currentCuestId = id;
+  document.getElementById('asigTitle').textContent = title;
+  document.getElementById('modalAsig').classList.add('active');
+  loadAsigPreguntas();
+}
+function closeAsig() { document.getElementById('modalAsig').classList.remove('active'); }
+
+function loadAsigPreguntas() {
+  var filtro = document.getElementById('filtroAsigMateria').value;
+  var url = '/api/preguntas' + (filtro ? '?materia_id=' + filtro : '');
+  fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+    var allPreguntas = d.preguntas;
+    return fetch('/api/cuestionarios/' + currentCuestId + '/preguntas').then(function(r) { return r.json(); }).then(function(d2) {
+      var actuales = d2.preguntas.map(function(p) { return p.id; });
+      var ap = document.getElementById('asigPreguntas');
+      ap.innerHTML = '';
+      allPreguntas.forEach(function(p) {
+        var checked = actuales.indexOf(p.id) !== -1 ? 'checked' : '';
+        var materiaTag = p.materia_nombre ? ' [' + p.materia_nombre + ']' : '';
+        var shortText = p.texto.length > 80 ? p.texto.substring(0, 80) + '...' : p.texto;
+        var lbl = document.createElement('label');
+        lbl.className = 'checkbox-label' + (checked ? ' selected' : '');
+        lbl.id = 'lbl-' + p.id;
+        lbl.innerHTML = '<input type="checkbox" ' + checked + ' onchange="togglePreg(' + p.id + ',this.checked)"> ' + shortText + materiaTag + ' <strong>(' + p.respuesta_correcta + ')</strong>';
+        ap.appendChild(lbl);
+      });
+      var ac = document.getElementById('asigActuales');
+      ac.innerHTML = '';
+      if (actuales.length === 0) {
+        ac.innerHTML = '<p style="color:#94a3b8">No hay preguntas asignadas</p>';
+      } else {
+        ac.innerHTML = '<p><strong>' + actuales.length + '</strong> preguntas asignadas</p>';
+      }
+    });
+  });
+}
+
+function togglePreg(pid, add) {
+  if (add) {
+    fetch('/api/cuestionarios/' + currentCuestId + '/preguntas', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pregunta_id: pid })
+    }).then(function() { loadAsigPreguntas(); });
+  } else {
+    fetch('/api/cuestionarios/' + currentCuestId + '/preguntas/' + pid, { method: 'DELETE' })
+    .then(function() { loadAsigPreguntas(); });
+  }
+}
+
+function togglePublicar(id, activo) {
+  fetch('/api/cuestionarios/' + id + '/publicar', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activo: activo })
+  }).then(function() { load(); });
+}
+
+function deleteCuest(id) {
+  if (!confirm('Eliminar este cuestionario y todas sus preguntas asociadas?')) return;
+  fetch('/api/cuestionarios/' + id, { method: 'DELETE' }).then(function() { load(); });
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+</script>
+</body></html>

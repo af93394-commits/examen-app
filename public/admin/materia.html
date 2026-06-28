@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Materia - Panel</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#9881; Admin</h2><small>Panel de control</small></div>
+<nav>
+<a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
+<a href="/admin/usuarios.html"><span class="icon">&#128100;</span><span>Usuarios</span></a>
+<a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
+<a href="/admin/cuestionarios.html"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/materias.html" class="active"><span class="icon">&#128218;</span><span>Materias</span></a>
+<a href="/admin/informes.html"><span class="icon">&#128202;</span><span>Informes</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header">
+<div>
+<a href="/admin/materias.html" style="color:#2563eb;font-size:14px">&#8592; Volver a Materias</a>
+<h1 id="materiaTitle">Materia</h1>
+<p id="materiaDesc" style="color:#64748b;margin-top:4px"></p>
+</div>
+</div>
+
+<div class="tabs" id="tabsNav">
+<button class="tab-btn active" onclick="showTab('preguntas')">&#128196; Preguntas</button>
+<button class="tab-btn" onclick="showTab('cuestionarios')">&#128221; Cuestionarios</button>
+</div>
+
+<div id="tabPreguntas">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h2>Preguntas de esta materia</h2>
+<button class="btn btn-primary" onclick="openPreguntaModal()">+ Nueva Pregunta</button>
+</div>
+<div class="table-container">
+<table><thead><tr><th>ID</th><th>Pregunta</th><th>Imagen</th><th>Correcta</th><th>Acciones</th></tr></thead>
+<tbody id="tablaPreguntas"></tbody></table>
+</div>
+</div>
+
+<div id="tabCuestionarios" style="display:none">
+<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+<h2>Cuestionarios de esta materia</h2>
+<button class="btn btn-primary" onclick="openCuestModal()">+ Nuevo Cuestionario</button>
+</div>
+<div id="listaCuestionarios"></div>
+</div>
+</div>
+
+<div class="modal-overlay" id="modalPregunta">
+<div class="modal" style="max-width:600px">
+<button class="close" onclick="closePreguntaModal()">&times;</button>
+<h2 id="preguntaModalTitle">Nueva Pregunta</h2>
+<form id="preguntaForm" enctype="multipart/form-data">
+<input type="hidden" id="editPregId">
+<div class="form-group"><label>Texto de la pregunta</label><textarea id="fTexto" rows="3" required></textarea></div>
+<div class="form-group"><label>Imagen (opcional)</label>
+<div class="drop-zone" id="dropZone"><div class="icon">&#128247;</div><p>Arrastra una imagen aqui o haz clic para seleccionar</p><p style="font-size:11px">JPG, PNG, GIF, WebP (max 5MB)</p></div>
+<input type="file" id="fImagen" accept="image/*" style="display:none">
+<img id="previewImg" class="preview-img">
+</div>
+<div class="form-group"><label>Opcion A</label><input type="text" id="fOpcA" required></div>
+<div class="form-group"><label>Opcion B</label><input type="text" id="fOpcB" required></div>
+<div class="form-group"><label>Opcion C</label><input type="text" id="fOpcC" required></div>
+<div class="form-group"><label>Opcion D</label><input type="text" id="fOpcD" required></div>
+<div class="form-group"><label>Respuesta Correcta</label>
+<select id="fCorrecta" required><option value="">Seleccione...</option><option value="A">A</option><option value="B">B</option><option value="C">C</option><option value="D">D</option></select></div>
+<button type="submit" class="btn btn-primary btn-block">Guardar Pregunta</button>
+</form>
+</div>
+</div>
+
+<div class="modal-overlay" id="modalCuest">
+<div class="modal">
+<button class="close" onclick="closeCuestModal()">&times;</button>
+<h2 id="cuestModalTitle">Nuevo Cuestionario</h2>
+<form id="cuestForm">
+<input type="hidden" id="editCuestId">
+<div class="form-group"><label>Titulo</label><input type="text" id="fCTitulo" required></div>
+<div class="form-group"><label>Descripcion</label><textarea id="fCDesc"></textarea></div>
+<div class="form-group"><label>Tiempo limite (minutos)</label><input type="number" id="fCTiempo" value="60" min="5" max="300"></div>
+<button type="submit" class="btn btn-primary btn-block">Guardar Cuestionario</button>
+</form>
+</div>
+</div>
+
+<div class="modal-overlay" id="modalAsig">
+<div class="modal" style="max-width:700px">
+<button class="close" onclick="closeAsig()">&times;</button>
+<h2>Asignar Preguntas - <span id="asigTitle"></span></h2>
+<div id="asigPreguntas" style="max-height:350px;overflow-y:auto;margin:16px 0"></div>
+<h3 style="margin:16px 0 8px">Preguntas en el cuestionario</h3>
+<div id="asigActuales"></div>
+</div>
+</div>
+
+<script>
+var materiaId = new URLSearchParams(window.location.search).get('id');
+var editingPreg = false, imagenActual = null, editingCuest = false, currentCuestId = 0;
+
+if (!materiaId) window.location.href = '/admin/materias.html';
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'admin') window.location.href = '/';
+  loadMateria();
+}).catch(function() { window.location.href = '/'; });
+
+function loadMateria() {
+  fetch('/api/materias/todas').then(function(r) { return r.json(); }).then(function(d) {
+    var m = d.materias.find(function(x) { return x.id == materiaId; });
+    if (!m) { window.location.href = '/admin/materias.html'; return; }
+    document.getElementById('materiaTitle').textContent = m.nombre;
+    document.getElementById('materiaDesc').textContent = m.descripcion || 'Sin descripcion';
+    document.title = m.nombre + ' - Panel';
+    loadPreguntas();
+    loadCuestionarios();
+  });
+}
+
+function showTab(tab) {
+  document.getElementById('tabPreguntas').style.display = tab === 'preguntas' ? 'block' : 'none';
+  document.getElementById('tabCuestionarios').style.display = tab === 'cuestionarios' ? 'block' : 'none';
+  document.querySelectorAll('.tab-btn').forEach(function(b) { b.classList.remove('active'); });
+  document.querySelectorAll('.tab-btn')[tab === 'preguntas' ? 0 : 1].classList.add('active');
+}
+
+var dz = document.getElementById('dropZone'), fi = document.getElementById('fImagen'), pi = document.getElementById('previewImg');
+dz.addEventListener('click', function() { fi.click(); });
+dz.addEventListener('dragover', function(e) { e.preventDefault(); dz.classList.add('dragover'); });
+dz.addEventListener('dragleave', function() { dz.classList.remove('dragover'); });
+dz.addEventListener('drop', function(e) { e.preventDefault(); dz.classList.remove('dragover'); fi.files = e.dataTransfer.files; showPreview(e.dataTransfer.files[0]); });
+fi.addEventListener('change', function() { if (fi.files[0]) showPreview(fi.files[0]); });
+function showPreview(f) { var r = new FileReader(); r.onload = function(e) { pi.src = e.target.result; pi.style.display = 'block'; }; r.readAsDataURL(f); }
+
+function loadPreguntas() {
+  fetch('/api/preguntas?materia_id=' + materiaId).then(function(r) { return r.json(); }).then(function(d) {
+    var tb = document.getElementById('tablaPreguntas');
+    tb.innerHTML = '';
+    d.preguntas.forEach(function(p) {
+      var txt = p.texto.length > 60 ? p.texto.substring(0, 60) + '...' : p.texto;
+      var img = p.imagen ? '<span style="color:#16a34a">&#10003;</span>' : '<span style="color:#94a3b8">No</span>';
+      var row = '<tr><td>' + p.id + '</td><td>' + txt + '</td><td>' + img + '</td>';
+      row += '<td><strong>' + p.respuesta_correcta + '</strong></td>';
+      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick=\'editPregunta(' + JSON.stringify(p) + ')\'>&#9998; Editar</button> ';
+      row += '<button class="btn btn-sm btn-danger" onclick="deletePregunta(' + p.id + ')">&#128465; Eliminar</button></td></tr>';
+      tb.innerHTML += row;
+    });
+    if (d.preguntas.length === 0) {
+      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:40px">No hay preguntas en esta materia. Crea la primera pregunta.</td></tr>';
+    }
+  });
+}
+
+function openPreguntaModal() {
+  editingPreg = false;
+  document.getElementById('preguntaModalTitle').textContent = 'Nueva Pregunta';
+  document.getElementById('preguntaForm').reset();
+  document.getElementById('editPregId').value = '';
+  imagenActual = null;
+  pi.style.display = 'none'; pi.src = '';
+  document.getElementById('modalPregunta').classList.add('active');
+}
+
+function editPregunta(p) {
+  editingPreg = true;
+  imagenActual = p.imagen;
+  document.getElementById('preguntaModalTitle').textContent = 'Editar Pregunta';
+  document.getElementById('editPregId').value = p.id;
+  document.getElementById('fTexto').value = p.texto;
+  document.getElementById('fOpcA').value = p.opcion_a;
+  document.getElementById('fOpcB').value = p.opcion_b;
+  document.getElementById('fOpcC').value = p.opcion_c;
+  document.getElementById('fOpcD').value = p.opcion_d;
+  document.getElementById('fCorrecta').value = p.respuesta_correcta;
+  if (p.imagen) { pi.src = p.imagen; pi.style.display = 'block'; } else { pi.style.display = 'none'; pi.src = ''; }
+  document.getElementById('modalPregunta').classList.add('active');
+}
+
+function closePreguntaModal() { document.getElementById('modalPregunta').classList.remove('active'); }
+
+document.getElementById('preguntaForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var fd = new FormData();
+  fd.append('texto', document.getElementById('fTexto').value);
+  fd.append('opcion_a', document.getElementById('fOpcA').value);
+  fd.append('opcion_b', document.getElementById('fOpcB').value);
+  fd.append('opcion_c', document.getElementById('fOpcC').value);
+  fd.append('opcion_d', document.getElementById('fOpcD').value);
+  fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
+  fd.append('materia_id', materiaId);
+  if (fi.files[0]) fd.append('imagen', fi.files[0]);
+  else if (imagenActual) fd.append('imagen_existente', imagenActual);
+
+  var id = document.getElementById('editPregId').value;
+  if (editingPreg) { await fetch('/api/preguntas/' + id, { method: 'PUT', body: fd }); }
+  else { await fetch('/api/preguntas', { method: 'POST', body: fd }); }
+  closePreguntaModal();
+  loadPreguntas();
+});
+
+function deletePregunta(id) {
+  if (!confirm('Eliminar esta pregunta?')) return;
+  fetch('/api/preguntas/' + id, { method: 'DELETE' }).then(function() { loadPreguntas(); });
+}
+
+function loadCuestionarios() {
+  fetch('/api/cuestionarios?materia_id=' + materiaId).then(function(r) { return r.json(); }).then(function(d) {
+    var c = document.getElementById('listaCuestionarios');
+    c.innerHTML = '';
+    if (d.cuestionarios.length === 0) {
+      c.innerHTML = '<div class="card empty-state"><div class="icon">&#128221;</div><p>No hay cuestionarios en esta materia</p></div>';
+      return;
+    }
+    d.cuestionarios.forEach(function(q) {
+      var estadoBadge = q.activo ? 'badge-active' : 'badge-inactive';
+      var estadoLabel = q.activo ? 'Publicado' : 'Borrador';
+      var totalP = q.total_preguntas || 0;
+      var publishBtn = q.activo
+        ? '<button class="btn btn-sm btn-secondary" onclick="togglePublicar(' + q.id + ',0)">&#128065; Despublicar</button>'
+        : '<button class="btn btn-sm btn-success" onclick="togglePublicar(' + q.id + ',1)">&#128221; Publicar</button>';
+      var html = '<div class="card">';
+      html += '<div class="card-header"><h3>' + q.titulo + '</h3>';
+      html += '<div><span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></div></div>';
+      if (q.descripcion) html += '<p style="color:#64748b;margin-bottom:8px">' + q.descripcion + '</p>';
+      html += '<p style="color:#64748b;margin-bottom:12px">' + totalP + ' preguntas | Tiempo: ' + q.tiempo_limite + ' min</p>';
+      html += '<div class="actions">';
+      html += '<button class="btn btn-sm btn-primary" onclick="openAsig(' + q.id + ',\'' + q.titulo.replace(/'/g, "\\'") + '\')">&#128196; Asignar Preguntas</button> ';
+      html += '<button class="btn btn-sm btn-secondary" onclick=\'editCuest(' + JSON.stringify(q) + ')\'>&#9998; Editar</button> ';
+      html += publishBtn + ' ';
+      html += '<button class="btn btn-sm btn-danger" onclick="deleteCuest(' + q.id + ')">&#128465; Eliminar</button>';
+      html += '</div></div>';
+      c.innerHTML += html;
+    });
+  });
+}
+
+function openCuestModal() {
+  editingCuest = false;
+  document.getElementById('cuestModalTitle').textContent = 'Nuevo Cuestionario';
+  document.getElementById('cuestForm').reset();
+  document.getElementById('editCuestId').value = '';
+  document.getElementById('fCTiempo').value = '60';
+  document.getElementById('modalCuest').classList.add('active');
+}
+
+function editCuest(q) {
+  editingCuest = true;
+  document.getElementById('cuestModalTitle').textContent = 'Editar Cuestionario';
+  document.getElementById('editCuestId').value = q.id;
+  document.getElementById('fCTitulo').value = q.titulo;
+  document.getElementById('fCDesc').value = q.descripcion || '';
+  document.getElementById('fCTiempo').value = q.tiempo_limite;
+  document.getElementById('modalCuest').classList.add('active');
+}
+
+function closeCuestModal() { document.getElementById('modalCuest').classList.remove('active'); }
+
+document.getElementById('cuestForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var body = {
+    titulo: document.getElementById('fCTitulo').value,
+    descripcion: document.getElementById('fCDesc').value,
+    tiempo_limite: parseInt(document.getElementById('fCTiempo').value),
+    materia_id: materiaId
+  };
+  if (editingCuest) {
+    body.activo = 0;
+    await fetch('/api/cuestionarios/' + document.getElementById('editCuestId').value, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+  } else {
+    await fetch('/api/cuestionarios', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+  }
+  closeCuestModal();
+  loadCuestionarios();
+});
+
+function togglePublicar(id, activo) {
+  fetch('/api/cuestionarios/' + id + '/publicar', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ activo: activo })
+  }).then(function() { loadCuestionarios(); });
+}
+
+function deleteCuest(id) {
+  if (!confirm('Eliminar este cuestionario y todas sus preguntas asociadas?')) return;
+  fetch('/api/cuestionarios/' + id, { method: 'DELETE' }).then(function() { loadCuestionarios(); });
+}
+
+function openAsig(id, title) {
+  currentCuestId = id;
+  document.getElementById('asigTitle').textContent = title;
+  document.getElementById('modalAsig').classList.add('active');
+  loadAsigPreguntas();
+}
+function closeAsig() { document.getElementById('modalAsig').classList.remove('active'); }
+
+function loadAsigPreguntas() {
+  fetch('/api/preguntas?materia_id=' + materiaId).then(function(r) { return r.json(); }).then(function(d) {
+    var allPreguntas = d.preguntas;
+    return fetch('/api/cuestionarios/' + currentCuestId + '/preguntas').then(function(r) { return r.json(); }).then(function(d2) {
+      var actuales = d2.preguntas.map(function(p) { return p.id; });
+      var ap = document.getElementById('asigPreguntas');
+      ap.innerHTML = '';
+      allPreguntas.forEach(function(p) {
+        var checked = actuales.indexOf(p.id) !== -1 ? 'checked' : '';
+        var shortText = p.texto.length > 80 ? p.texto.substring(0, 80) + '...' : p.texto;
+        var lbl = document.createElement('label');
+        lbl.className = 'checkbox-label' + (checked ? ' selected' : '');
+        lbl.innerHTML = '<input type="checkbox" ' + checked + ' onchange="togglePreg(' + p.id + ',this.checked)"> ' + shortText + ' <strong>(' + p.respuesta_correcta + ')</strong>';
+        ap.appendChild(lbl);
+      });
+      var ac = document.getElementById('asigActuales');
+      ac.innerHTML = actuales.length === 0
+        ? '<p style="color:#94a3b8">No hay preguntas asignadas</p>'
+        : '<p><strong>' + actuales.length + '</strong> preguntas asignadas</p>';
+    });
+  });
+}
+
+function togglePreg(pid, add) {
+  if (add) {
+    fetch('/api/cuestionarios/' + currentCuestId + '/preguntas', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pregunta_id: pid })
+    }).then(function() { loadAsigPreguntas(); });
+  } else {
+    fetch('/api/cuestionarios/' + currentCuestId + '/preguntas/' + pid, { method: 'DELETE' })
+    .then(function() { loadAsigPreguntas(); });
+  }
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+</script>
+</body></html>

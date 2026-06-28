@@ -1,0 +1,135 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Gestionar Usuarios</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#9881; Admin</h2><small>Panel de control</small></div>
+<nav>
+<a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
+<a href="/admin/usuarios.html" class="active"><span class="icon">&#128100;</span><span>Usuarios</span></a>
+<a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
+<a href="/admin/cuestionarios.html"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/materias.html"><span class="icon">&#128218;</span><span>Materias</span></a>
+<a href="/admin/informes.html"><span class="icon">&#128202;</span><span>Informes</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Gestionar Usuarios</h1><button class="btn btn-primary" onclick="openModal()">+ Nuevo Usuario</button></div>
+<div class="table-container">
+<table><thead><tr><th>ID</th><th>Usuario</th><th>Nombre</th><th>Rol</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="tablaUsuarios"></tbody></table>
+</div>
+</div>
+<div class="modal-overlay" id="modal">
+<div class="modal">
+<button class="close" onclick="closeModal()">&times;</button>
+<h2 id="modalTitle">Nuevo Usuario</h2>
+<form id="userForm">
+<input type="hidden" id="editId">
+<div class="form-group"><label>Usuario</label><input type="text" id="fUsuario" required></div>
+<div class="form-group"><label>Nombre Completo</label><input type="text" id="fNombre" required></div>
+<div class="form-group"><label>Contrasena</label><input type="password" id="fPassword" placeholder="Dejar vacio para no cambiar"></div>
+<div class="form-group"><label>Rol</label><select id="fRol"><option value="estudiante">Estudiante</option><option value="admin">Administrador</option></select></div>
+<div class="form-group"><label>Estado</label><select id="fActivo"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+<button type="submit" class="btn btn-primary btn-block">Guardar</button>
+</form>
+</div>
+</div>
+<script>
+let editing = false;
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'admin') window.location.href = '/';
+}).catch(function() { window.location.href = '/'; });
+
+function load() {
+  fetch('/api/usuarios').then(function(r) { return r.json(); }).then(function(d) {
+    var tb = document.getElementById('tablaUsuarios');
+    tb.innerHTML = '';
+    d.usuarios.forEach(function(u) {
+      var rolBadge = u.rol === 'admin' ? 'badge-admin' : 'badge-student';
+      var rolLabel = u.rol === 'admin' ? 'Admin' : 'Estudiante';
+      var estadoBadge = u.activo ? 'badge-active' : 'badge-inactive';
+      var estadoLabel = u.activo ? 'Activo' : 'Inactivo';
+      var row = '<tr><td>' + u.id + '</td><td>' + u.usuario + '</td><td>' + u.nombre_completo + '</td>';
+      row += '<td><span class="badge ' + rolBadge + '">' + rolLabel + '</span></td>';
+      row += '<td><span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></td>';
+      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick=\'editUser(' + JSON.stringify(u) + ')\'>&#9998; Editar</button> ';
+      row += '<button class="btn btn-sm btn-danger" onclick="deleteUser(' + u.id + ')">&#128465; Eliminar</button></td></tr>';
+      tb.innerHTML += row;
+    });
+    if (d.usuarios.length === 0) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:40px">No hay usuarios registrados</td></tr>';
+    }
+  });
+}
+
+function openModal() {
+  editing = false;
+  document.getElementById('modalTitle').textContent = 'Nuevo Usuario';
+  document.getElementById('userForm').reset();
+  document.getElementById('editId').value = '';
+  document.getElementById('fUsuario').disabled = false;
+  document.getElementById('fUsuario').required = true;
+  document.getElementById('fPassword').required = true;
+  document.getElementById('modal').classList.add('active');
+}
+
+function editUser(u) {
+  editing = true;
+  document.getElementById('modalTitle').textContent = 'Editar Usuario';
+  document.getElementById('editId').value = u.id;
+  document.getElementById('fUsuario').value = u.usuario;
+  document.getElementById('fUsuario').disabled = true;
+  document.getElementById('fUsuario').required = false;
+  document.getElementById('fNombre').value = u.nombre_completo;
+  document.getElementById('fRol').value = u.rol;
+  document.getElementById('fActivo').value = u.activo;
+  document.getElementById('fPassword').value = '';
+  document.getElementById('fPassword').required = false;
+  document.getElementById('modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal').classList.remove('active');
+}
+
+document.getElementById('userForm').addEventListener('submit', async function(e) {
+  e.preventDefault();
+  var id = document.getElementById('editId').value;
+  var body = {
+    usuario: document.getElementById('fUsuario').value,
+    nombre_completo: document.getElementById('fNombre').value,
+    rol: document.getElementById('fRol').value,
+    activo: parseInt(document.getElementById('fActivo').value)
+  };
+  var pw = document.getElementById('fPassword').value;
+  if (pw) body.password = pw;
+
+  if (editing) {
+    await fetch('/api/usuarios/' + id, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  } else {
+    if (!pw) { alert('La contrasena es requerida para nuevos usuarios'); return; }
+    body.password = pw;
+    await fetch('/api/usuarios', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  }
+  closeModal();
+  load();
+});
+
+function deleteUser(id) {
+  if (!confirm('Eliminar este usuario?')) return;
+  fetch('/api/usuarios/' + id, { method: 'DELETE' }).then(function() { load(); });
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+
+load();
+</script>
+</body></html>

@@ -1,0 +1,46 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>ICFES - Iniciar Sesion</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="login-container">
+<div class="login-box">
+<div class="logo">&#128218;</div>
+<h1>ICFES Cuestionarios</h1>
+<p>Plataforma de evaluaciones academicas</p>
+<div id="error" style="display:none;color:#dc2626;background:#fee2e2;padding:10px;border-radius:8px;margin-bottom:16px;font-size:13px"></div>
+<form id="loginForm">
+<div class="form-group">
+<label>Usuario</label>
+<input type="text" id="usuario" placeholder="Ingrese su usuario" required>
+</div>
+<div class="form-group">
+<label>Contrasena</label>
+<input type="password" id="password" placeholder="Ingrese su contrasena" required>
+</div>
+<button type="submit" class="btn btn-primary btn-block" style="margin-top:8px">Ingresar</button>
+</form>
+<p style="margin-top:16px;text-align:center;font-size:12px;color:#94a3b8">Admin predeterminado: admin / admin123</p>
+</div>
+</div>
+<script>
+document.getElementById('loginForm').addEventListener('submit', async(e)=>{
+e.preventDefault();
+const errDiv=document.getElementById('error');
+errDiv.style.display='none';
+try{
+const res=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},
+body:JSON.stringify({usuario:document.getElementById('usuario').value,password:document.getElementById('password').value})});
+const data=await res.json();
+if(!res.ok){errDiv.textContent=data.error;errDiv.style.display='block';return;}
+if(data.user.rol==='admin') window.location.href='/admin/dashboard.html';
+else window.location.href='/student/dashboard.html';
+}catch(err){errDiv.textContent='Error de conexion';errDiv.style.display='block';}
+});
+fetch('/api/sesion').then(r=>r.json()).then(d=>{if(d.user){if(d.user.rol==='admin')window.location.href='/admin/dashboard.html';else window.location.href='/student/dashboard.html';}}).catch(()=>{});
+</script>
+</body>
+</html>

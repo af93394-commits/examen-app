@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Mis Resultados</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
+<nav>
+<a href="/student/dashboard.html"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/resultados.html" class="active"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div id="resultadoDetalle"></div>
+<div id="historial"></div>
+</div>
+<script>
+var params = new URLSearchParams(window.location.search);
+var intentoId = params.get('intento');
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'estudiante') window.location.href = '/';
+  if (intentoId) loadResultado(intentoId);
+  else loadHistorial();
+}).catch(function() { window.location.href = '/'; });
+
+function loadResultado(id) {
+  fetch('/api/intentos/' + id + '/resultados').then(function(r) { return r.json(); }).then(function(d) {
+    var it = d.intento;
+    var pct = it.total_preguntas ? Math.round((it.puntuacion / it.total_preguntas) * 100) : 0;
+    var color = pct >= 60 ? '#16a34a' : '#dc2626';
+
+    var html = '<div class="page-header"><h1>Resultado del Cuestionario</h1></div>';
+
+    html += '<div class="result-score">';
+    html += '<h2 style="color:' + color + '">' + it.puntuacion + ' / ' + it.total_preguntas + '</h2>';
+    html += '<p style="font-size:20px;font-weight:700;color:' + color + '">' + pct + '% de aciertos</p>';
+    html += '<p style="margin-top:8px;font-size:13px;color:#64748b">' + (it.completado ? 'Completado' : 'En progreso') + '</p>';
+    html += '</div>';
+
+    html += '<div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)">';
+    html += '<h3 style="margin-bottom:12px">Resumen</h3>';
+    html += '<div style="display:flex;gap:24px;flex-wrap:wrap">';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#16a34a">' + it.puntuacion + '</div><div style="color:#64748b;font-size:13px">Correctas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#dc2626">' + (it.total_preguntas - it.puntuacion) + '</div><div style="color:#64748b;font-size:13px">Incorrectas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#2563eb">' + it.total_preguntas + '</div><div style="color:#64748b;font-size:13px">Total</div></div>';
+    html += '</div></div>';
+
+    html += '<h2 style="margin-bottom:16px">Respuestas detalladas</h2>';
+
+    d.respuestas.forEach(function(r, i) {
+      var cls = r.es_correcta ? 'result-correct' : 'result-incorrect';
+      var icon = r.es_correcta ? '&#10003;' : '&#10007;';
+      var iconColor = r.es_correcta ? '#16a34a' : '#dc2626';
+
+      html += '<div class="result-card ' + cls + '">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">';
+      html += '<h4 style="flex:1">' + (i + 1) + '. ' + r.texto + '</h4>';
+      html += '<span style="font-size:24px;color:' + iconColor + ';margin-left:12px">' + icon + '</span>';
+      html += '</div>';
+
+      if (r.imagen) html += '<img src="' + r.imagen + '" style="max-width:100%;border-radius:8px;margin-bottom:12px">';
+
+      ['A', 'B', 'C', 'D'].forEach(function(opt) {
+        var val = r['opcion_' + opt.toLowerCase()];
+        var imgKey = 'imagen_opcion_' + opt.toLowerCase();
+        var imgVal = r[imgKey];
+        var style = '';
+        var label = '';
+
+        if (opt === r.respuesta_correcta && opt === r.respuesta_seleccionada) {
+          style = 'font-weight:700;color:#16a34a;background:#dcfce7;padding:8px 12px;border-radius:6px;margin-bottom:4px;display:block';
+          label = ' &#10003; Tu respuesta - Correcta';
+        } else if (opt === r.respuesta_correcta) {
+          style = 'font-weight:700;color:#16a34a;background:#dcfce7;padding:8px 12px;border-radius:6px;margin-bottom:4px;display:block';
+          label = ' &#10003; Respuesta correcta';
+        } else if (opt === r.respuesta_seleccionada && !r.es_correcta) {
+          style = 'font-weight:700;color:#dc2626;background:#fee2e2;padding:8px 12px;border-radius:6px;margin-bottom:4px;display:block';
+          label = ' &#10007; Tu respuesta - Incorrecta';
+        } else {
+          style = 'color:#64748b;padding:8px 12px;margin-bottom:4px;display:block';
+          label = '';
+        }
+
+        html += '<span style="' + style + '">' + opt + ') ';
+        if (imgVal) html += '<img src="' + imgVal + '" style="max-width:150px;max-height:80px;border-radius:4px;vertical-align:middle">';
+        if (val) html += val;
+        html += label + '</span>';
+      });
+
+      if (!r.es_correcta) {
+        html += '<div style="margin-top:10px;padding:10px;background:#eff6ff;border-radius:6px;font-size:13px;color:#2563eb">';
+        html += '<strong>La respuesta correcta era: ' + r.respuesta_correcta + '</strong>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+    });
+
+    html += '<div style="text-align:center;margin-top:24px"><a href="/student/dashboard.html" class="btn btn-primary">Volver al Dashboard</a></div>';
+    document.getElementById('resultadoDetalle').innerHTML = html;
+  });
+}
+
+function loadHistorial() {
+  var h = document.getElementById('historial');
+  h.innerHTML = '<div class="page-header"><h1>Mis Resultados</h1></div>';
+
+  fetch('/api/mis-intentos').then(function(r) { return r.json(); }).then(function(d) {
+    if (d.intentos.length === 0) {
+      h.innerHTML += '<div class="card empty-state"><div class="icon">&#128220;</div><p>No tienes resultados aun</p></div>';
+      return;
+    }
+    d.intentos.forEach(function(it) {
+      var pct = it.total_preguntas ? Math.round((it.puntuacion / it.total_preguntas) * 100) : 0;
+      var cls = pct >= 60 ? 'badge-active' : 'badge-inactive';
+
+      var html = '<div class="card">';
+      html += '<div class="card-header"><h3>' + it.cuestionario_titulo + '</h3>';
+      html += '<span class="badge ' + cls + '">' + pct + '%</span></div>';
+      html += '<p style="color:#64748b">Puntaje: ' + it.puntuacion + '/' + it.total_preguntas + ' | ' + (it.completado ? 'Completado' : 'Incompleto') + '</p>';
+      html += '<p style="color:#94a3b8;font-size:12px">' + it.inicio_en + '</p>';
+      html += '<div class="actions" style="margin-top:8px">';
+      if (it.completado) html += '<a href="/student/resultados.html?intento=' + it.id + '" class="btn btn-sm btn-primary">&#128269; Ver Respuestas</a>';
+      html += '</div></div>';
+      h.innerHTML += html;
+    });
+  });
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+</script>
+</body></html>

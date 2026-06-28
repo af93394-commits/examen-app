@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Informes de Estudiantes</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#9881; Admin</h2><small>Panel de control</small></div>
+<nav>
+<a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
+<a href="/admin/usuarios.html"><span class="icon">&#128100;</span><span>Usuarios</span></a>
+<a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
+<a href="/admin/cuestionarios.html"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/materias.html"><span class="icon">&#128218;</span><span>Materias</span></a>
+<a href="/admin/informes.html" class="active"><span class="icon">&#128202;</span><span>Informes</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Informes de Estudiantes</h1></div>
+<div id="vistaEstudiantes">
+<div style="margin-bottom:16px">
+<h2 style="margin-bottom:4px">Estudiantes</h2>
+<p style="color:#64748b;font-size:13px">Selecciona un estudiante para ver sus intentos</p>
+</div>
+<div class="table-container">
+<table><thead><tr><th>Estudiante</th><th>Usuario</th><th>Intentos</th><th>Completados</th><th>Promedio</th><th>Acciones</th></tr></thead>
+<tbody id="tablaEstudiantes"></tbody></table>
+</div>
+</div>
+<div id="vistaIntentos" style="display:none">
+<div style="margin-bottom:16px">
+<a href="#" onclick="volver()" style="color:#2563eb;font-size:14px">&#8592; Volver a la lista</a>
+<h2 style="margin-top:8px" id="estudianteTitle">Intentos de -</h2>
+</div>
+<div id="listaIntentos"></div>
+</div>
+<div id="vistaDetalle" style="display:none">
+<div style="margin-bottom:16px">
+<a href="#" onclick="volverIntentos()" style="color:#2563eb;font-size:14px">&#8592; Volver a intentos</a>
+<h2 style="margin-top:8px" id="detalleTitle">Detalle del Intento</h2>
+</div>
+<div id="detalleContenido"></div>
+</div>
+</div>
+<script>
+var currentEstudianteId = 0, currentEstudianteNombre = '';
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'admin') window.location.href = '/';
+  loadEstudiantes();
+}).catch(function() { window.location.href = '/'; });
+
+function loadEstudiantes() {
+  fetch('/api/admin/estudiantes-con-intentos').then(function(r) { return r.json(); }).then(function(d) {
+    var tb = document.getElementById('tablaEstudiantes');
+    tb.innerHTML = '';
+    if (d.estudiantes.length === 0) {
+      tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:40px">No hay estudiantes registrados. Crea estudiantes desde Usuarios.</td></tr>';
+      return;
+    }
+    d.estudiantes.forEach(function(e) {
+      var promedio = e.promedio !== null ? e.promedio + '%' : '-';
+      var promColor = e.promedio >= 60 ? '#16a34a' : '#dc2626';
+      var row = '<tr>';
+      row += '<td><strong>' + e.nombre_completo + '</strong></td>';
+      row += '<td>' + e.usuario + '</td>';
+      row += '<td><span class="badge badge-admin">' + e.total_intentos + '</span></td>';
+      row += '<td><span class="badge badge-student">' + e.intentos_completados + '</span></td>';
+      row += '<td><span style="font-weight:700;color:' + promColor + '">' + promedio + '</span></td>';
+      row += '<td><button class="btn btn-sm btn-primary" onclick="verIntentos(' + e.id + ',\'' + e.nombre_completo.replace(/'/g, "\\'") + '\')">&#128269; Ver Intentos</button></td>';
+      row += '</tr>';
+      tb.innerHTML += row;
+    });
+  });
+}
+
+function verIntentos(id, nombre) {
+  currentEstudianteId = id;
+  currentEstudianteNombre = nombre;
+  document.getElementById('vistaEstudiantes').style.display = 'none';
+  document.getElementById('vistaDetalle').style.display = 'none';
+  document.getElementById('vistaIntentos').style.display = 'block';
+  document.getElementById('estudianteTitle').textContent = 'Intentos de ' + nombre;
+
+  fetch('/api/admin/usuarios/' + id + '/intentos').then(function(r) { return r.json(); }).then(function(d) {
+    var container = document.getElementById('listaIntentos');
+    container.innerHTML = '';
+    if (d.intentos.length === 0) {
+      container.innerHTML = '<div class="card empty-state"><div class="icon">&#128220;</div><p>Este estudiante no tiene intentos aun</p></div>';
+      return;
+    }
+    d.intentos.forEach(function(it) {
+      var pct = it.total_preguntas ? Math.round((it.puntuacion / it.total_preguntas) * 100) : 0;
+      var cls = pct >= 60 ? 'badge-active' : 'badge-inactive';
+
+      var html = '<div class="card">';
+      html += '<div class="card-header"><div>';
+      html += '<h3>' + it.cuestionario_titulo + '</h3>';
+      html += '<p style="color:#64748b;font-size:12px;margin-top:4px">' + (it.materia_nombre || 'Sin materia') + ' | ' + it.inicio_en + '</p>';
+      html += '</div>';
+      html += '<span class="badge ' + cls + '">' + pct + '%</span></div>';
+      html += '<div style="display:flex;gap:24px;align-items:center;margin-bottom:12px">';
+      html += '<div><span style="font-size:24px;font-weight:700;color:#16a34a">' + it.correctas + '</span> <span style="color:#64748b;font-size:13px">Correctas</span></div>';
+      html += '<div><span style="font-size:24px;font-weight:700;color:#dc2626">' + it.incorrectas + '</span> <span style="color:#64748b;font-size:13px">Incorrectas</span></div>';
+      html += '<div><span style="font-size:24px;font-weight:700;color:#2563eb">' + it.total_preguntas + '</span> <span style="color:#64748b;font-size:13px">Total</span></div>';
+      html += '<div><span class="badge ' + (it.completado ? 'badge-active' : 'badge-inactive') + '">' + (it.completado ? 'Completado' : 'Incompleto') + '</span></div>';
+      html += '</div>';
+      html += '<div class="actions">';
+      html += '<button class="btn btn-sm btn-primary" onclick="verDetalle(' + it.id + ',\'' + it.cuestionario_titulo.replace(/'/g, "\\'") + '\')">&#128269; Ver Detalle Completo</button>';
+      html += '</div></div>';
+      container.innerHTML += html;
+    });
+  });
+}
+
+function verDetalle(id, titulo) {
+  document.getElementById('vistaIntentos').style.display = 'none';
+  document.getElementById('vistaDetalle').style.display = 'block';
+  document.getElementById('detalleTitle').textContent = 'Detalle: ' + titulo;
+
+  fetch('/api/admin/intentos/' + id + '/detalle').then(function(r) { return r.json(); }).then(function(d) {
+    var it = d.intento;
+    var container = document.getElementById('detalleContenido');
+    var html = '';
+
+    var pct = it.total_preguntas ? Math.round((it.puntuacion / it.total_preguntas) * 100) : 0;
+    var color = pct >= 60 ? '#16a34a' : '#dc2626';
+
+    html += '<div class="result-score">';
+    html += '<h2 style="color:' + color + '">' + it.puntuacion + ' / ' + it.total_preguntas + '</h2>';
+    html += '<p style="font-size:20px;font-weight:700;color:' + color + '">' + pct + '% de aciertos</p>';
+    html += '<p style="margin-top:4px;color:#64748b">' + it.estudiante_nombre + ' (' + it.estudiante_usuario + ')</p>';
+    html += '<p style="color:#94a3b8;font-size:12px">' + it.inicio_en + (it.fin_en ? ' - ' + it.fin_en : '') + '</p>';
+    html += '</div>';
+
+    html += '<div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)">';
+    html += '<h3 style="margin-bottom:12px">Resumen</h3>';
+    html += '<div style="display:flex;gap:24px;flex-wrap:wrap">';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#16a34a">' + it.puntuacion + '</div><div style="color:#64748b;font-size:13px">Correctas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#dc2626">' + (it.total_preguntas - it.puntuacion) + '</div><div style="color:#64748b;font-size:13px">Incorrectas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#2563eb">' + it.total_preguntas + '</div><div style="color:#64748b;font-size:13px">Total</div></div>';
+    html += '</div></div>';
+
+    html += '<h2 style="margin-bottom:16px">Respuestas detalladas</h2>';
+
+    d.respuestas.forEach(function(r, i) {
+      var cls = r.es_correcta ? 'result-correct' : 'result-incorrect';
+      var icon = r.es_correcta ? '&#10003;' : '&#10007;';
+      var iconColor = r.es_correcta ? '#16a34a' : '#dc2626';
+
+      html += '<div class="result-card ' + cls + '">';
+      html += '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">';
+      html += '<h4 style="flex:1">' + (i + 1) + '. ' + r.texto + '</h4>';
+      html += '<span style="font-size:24px;color:' + iconColor + ';margin-left:12px">' + icon + '</span>';
+      html += '</div>';
+
+      if (r.imagen) html += '<img src="' + r.imagen + '" style="max-width:100%;border-radius:8px;margin-bottom:12px">';
+
+      ['A', 'B', 'C', 'D'].forEach(function(opt) {
+        var val = r['opcion_' + opt.toLowerCase()];
+        var style = '';
+        var label = '';
+
+        if (opt === r.respuesta_correcta && opt === r.respuesta_seleccionada) {
+          style = 'font-weight:700;color:#16a34a;background:#dcfce7;padding:8px 12px;border-radius:6px;margin-bottom:4px;display:block';
+          label = ' &#10003; Respuesta del estudiante - Correcta';
+        } else if (opt === r.respuesta_correcta) {
+          style = 'font-weight:700;color:#16a34a;background:#dcfce7;padding:8px 12px;border-radius:6px;margin-bottom:4px;display:block';
+          label = ' &#10003; Respuesta correcta';
+        } else if (opt === r.respuesta_seleccionada && !r.es_correcta) {
+          style = 'font-weight:700;color:#dc2626;background:#fee2e2;padding:8px 12px;border-radius:6px;margin-bottom:4px;display:block';
+          label = ' &#10007; Respuesta del estudiante - Incorrecta';
+        } else {
+          style = 'color:#64748b;padding:8px 12px;margin-bottom:4px;display:block';
+          label = '';
+        }
+
+        html += '<span style="' + style + '">' + opt + ') ' + val + label + '</span>';
+      });
+
+      if (!r.es_correcta) {
+        html += '<div style="margin-top:10px;padding:10px;background:#eff6ff;border-radius:6px;font-size:13px;color:#2563eb">';
+        html += '<strong>La respuesta correcta era: ' + r.respuesta_correcta + '</strong>';
+        html += '</div>';
+      }
+
+      html += '</div>';
+    });
+
+    container.innerHTML = html;
+  });
+}
+
+function volver() {
+  document.getElementById('vistaEstudiantes').style.display = 'block';
+  document.getElementById('vistaIntentos').style.display = 'none';
+  document.getElementById('vistaDetalle').style.display = 'none';
+}
+
+function volverIntentos() {
+  document.getElementById('vistaIntentos').style.display = 'block';
+  document.getElementById('vistaDetalle').style.display = 'none';
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+</script>
+</body></html>

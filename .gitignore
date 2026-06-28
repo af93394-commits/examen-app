@@ -1,0 +1,10 @@
+node_modules/
+examen.db
+sessions.db
+url_actual.txt
+iniciar-ngrok.bat
+iniciar-ngrok.ps1
+SESION_TRABAJO.md
+uploads/*
+!uploads/.gitkeep
+.env

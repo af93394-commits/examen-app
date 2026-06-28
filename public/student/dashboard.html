@@ -1,0 +1,102 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Mi Dashboard</title>
+<link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
+<nav>
+<a href="/student/dashboard.html" class="active"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Bienvenido, <span id="nombreEst"></span></h1></div>
+<div class="stats-grid">
+<div class="stat-card"><div class="stat-icon green">&#128221;</div><h3 id="sDisponibles">0</h3><p>Cuestionarios Disponibles</p></div>
+<div class="stat-card"><div class="stat-icon blue">&#128220;</div><h3 id="sRealizados">0</h3><p>Cuestionarios Realizados</p></div>
+</div>
+<div id="listaMaterias"></div>
+</div>
+<script>
+var userId = 0;
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  userId = d.user.id;
+  document.getElementById('userName').textContent = d.user.nombre;
+  document.getElementById('nombreEst').textContent = d.user.nombre;
+  if (d.user.rol !== 'estudiante') window.location.href = '/admin/dashboard.html';
+  loadMaterias();
+  loadIntentos();
+}).catch(function() { window.location.href = '/'; });
+
+function loadMaterias() {
+  fetch('/api/materias').then(function(r) { return r.json(); }).then(function(d) {
+    fetch('/api/cuestionarios').then(function(r) { return r.json(); }).then(function(d2) {
+      var container = document.getElementById('listaMaterias');
+      container.innerHTML = '';
+      var totalDisponibles = 0;
+      var materiasConCuestionarios = [];
+
+      d.materias.forEach(function(m) {
+        var cuestMateria = d2.cuestionarios.filter(function(c) { return c.materia_id === m.id; });
+        if (cuestMateria.length > 0) {
+          materiasConCuestionarios.push({ materia: m, cuestionarios: cuestMateria });
+          totalDisponibles += cuestMateria.length;
+        }
+      });
+
+      document.getElementById('sDisponibles').textContent = totalDisponibles;
+
+      if (materiasConCuestionarios.length === 0) {
+        container.innerHTML = '<div class="card empty-state"><div class="icon">&#128221;</div><p>No hay cuestionarios publicados aun</p></div>';
+        return;
+      }
+
+      materiasConCuestionarios.forEach(function(item) {
+        var html = '<div class="card" style="margin-bottom:24px">';
+        html += '<div class="card-header"><h2 style="font-size:20px">&#128218; ' + item.materia.nombre + '</h2>';
+        html += '<span class="badge badge-admin">' + item.cuestionarios.length + ' cuestionario(s)</span></div>';
+        if (item.materia.descripcion) html += '<p style="color:#64748b;margin-bottom:16px">' + item.materia.descripcion + '</p>';
+
+        item.cuestionarios.forEach(function(q) {
+          html += '<div style="background:#f8fafc;border-radius:8px;padding:16px;margin-bottom:10px">';
+          html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+          html += '<h3 style="font-size:16px">' + q.titulo + '</h3>';
+          html += '<span class="badge badge-active">' + q.tiempo_limite + ' min</span></div>';
+          if (q.descripcion) html += '<p style="color:#64748b;margin-bottom:8px;font-size:13px">' + q.descripcion + '</p>';
+          html += '<p style="color:#2563eb;margin-bottom:12px;font-size:13px">' + (q.total_preguntas || 0) + ' preguntas</p>';
+          html += '<button class="btn btn-primary" onclick="iniciarCuestionario(' + q.id + ',\'' + q.titulo.replace(/'/g, "\\'") + '\')">&#9654; Iniciar</button>';
+          html += '</div>';
+        });
+        html += '</div>';
+        container.innerHTML += html;
+      });
+    });
+  });
+}
+
+function loadIntentos() {
+  fetch('/api/mis-intentos').then(function(r) { return r.json(); }).then(function(d) {
+    document.getElementById('sRealizados').textContent = d.intentos.length;
+  });
+}
+
+function iniciarCuestionario(id, titulo) {
+  if (!confirm('Iniciar cuestionario "' + titulo + '"\nEsta seguro?')) return;
+  fetch('/api/intentos', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ cuestionario_id: id })
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    window.location.href = '/student/cuestionario.html?intento=' + d.id + '&total=' + d.total + '&cuestionario=' + id;
+  });
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+</script>
+</body></html>
