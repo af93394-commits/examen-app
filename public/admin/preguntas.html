@@ -38,6 +38,7 @@
 <form id="preguntaForm" enctype="multipart/form-data">
 <input type="hidden" id="editId">
 <div class="form-group"><label>Materia</label><select id="fMateria" required><option value="">Seleccione materia...</option></select></div>
+<div class="form-group"><label>Texto de lectura (opcional - para preguntas de Lectura Crítica)</label><textarea id="fTextoLectura" rows="4" placeholder="Pegar aquí el texto de lectura que será compartido entre varias preguntas..."></textarea></div>
 <div class="form-group"><label>Texto de la pregunta</label><textarea id="fTexto" rows="3" required></textarea></div>
 <div class="form-group"><label>Imagen (opcional)</label>
 <div class="drop-zone" id="dropZone" tabindex="0"><div class="icon">&#128247;</div><p>Arrastra, pega (Ctrl+V) o haz clic para seleccionar</p><p style="font-size:11px">JPG, PNG, GIF, WebP (max 5MB)</p></div>
@@ -214,8 +215,9 @@ function load() {
     d.preguntas.forEach(function(p, idx) {
       var txt = p.texto.length > 60 ? p.texto.substring(0, 60).replace(/\n/g, ' ') + '...' : p.texto.replace(/\n/g, ' ');
       var img = p.imagen ? '<span style="color:#16a34a">&#10003;</span>' : '<span style="color:#94a3b8">No</span>';
+      var lectura = p.texto_lectura ? '<span style="color:#2563eb;font-size:11px"> &#128214; Lectura</span>' : '';
       var materia = p.materia_nombre || 'Sin materia';
-      var row = '<tr><td>' + (idx + 1) + '</td><td>' + txt + '</td><td><span class="badge badge-admin">' + materia + '</span></td><td>' + img + '</td>';
+      var row = '<tr><td>' + (idx + 1) + '</td><td>' + txt + lectura + '</td><td><span class="badge badge-admin">' + materia + '</span></td><td>' + img + '</td>';
       row += '<td><strong>' + p.respuesta_correcta + '</strong></td>';
       row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick="editPregunta(' + JSON.stringify(p).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       row += '<button class="btn btn-sm btn-danger" onclick="deletePregunta(' + p.id + ')">&#128465; Eliminar</button></td></tr>';
@@ -232,6 +234,7 @@ function openModal() {
   document.getElementById('modalTitle').textContent = 'Nueva Pregunta';
   document.getElementById('preguntaForm').reset();
   document.getElementById('editId').value = '';
+  document.getElementById('fTextoLectura').value = '';
   imagenActual = null;
   imagenPegada = null;
   imagenEliminada = false;
@@ -265,6 +268,7 @@ function editPregunta(p) {
   document.getElementById('modalTitle').textContent = 'Editar Pregunta';
   document.getElementById('editId').value = p.id;
   document.getElementById('fMateria').value = p.materia_id || '';
+  document.getElementById('fTextoLectura').value = p.texto_lectura || '';
   document.getElementById('fTexto').value = p.texto;
   document.getElementById('fOpcA').value = p.opcion_a;
   document.getElementById('fOpcB').value = p.opcion_b;
@@ -297,6 +301,7 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   fd.append('opcion_d', document.getElementById('fOpcD').value);
   fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
   fd.append('materia_id', document.getElementById('fMateria').value);
+  fd.append('texto_lectura', document.getElementById('fTextoLectura').value);
   // Solo enviar imagen si se selecciono una nueva imagen o si es edicion con imagen existente
   if (imagenNuevaSeleccionada && fi.files[0]) {
     fd.append('imagen', fi.files[0]);

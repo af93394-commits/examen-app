@@ -4,6 +4,50 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Realizar Cuestionario</title>
 <link rel="stylesheet" href="/css/styles.css">
+<style>
+.texto-lectura-box {
+  background: #f0f9ff;
+  border-left: 4px solid #2563eb;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+.texto-lectura-box h3 {
+  color: #1e40af;
+  margin-bottom: 12px;
+  font-size: 1.1em;
+}
+.texto-lectura-box p {
+  white-space: pre-wrap;
+  line-height: 1.7;
+  color: #334155;
+  margin: 0;
+}
+.scroll-group {
+  margin-bottom: 30px;
+}
+.scroll-group .question-card {
+  margin-bottom: 16px;
+}
+.preguntas-scroll {
+  max-height: 500px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.preguntas-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.preguntas-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+  border-radius: 3px;
+}
+.preguntas-scroll::-webkit-scrollbar-thumb {
+  background: #94a3b8;
+  border-radius: 3px;
+}
+</style>
 </head>
 <body>
 <div class="main-content" style="margin-left:0">
@@ -39,7 +83,7 @@ fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).
       return;
     }
     startTimer();
-    showQuestion(0);
+    renderAll();
   });
 }).catch(function() { window.location.href = '/'; });
 
@@ -52,14 +96,56 @@ function startTimer() {
   }, 1000);
 }
 
-function showQuestion(idx) {
-  currentIndex = idx;
-  var p = preguntas[idx];
-  document.getElementById('quizProgress').textContent = 'Pregunta ' + (idx + 1) + ' de ' + preguntas.length;
+function renderAll() {
+  document.getElementById('quizProgress').textContent = preguntas.length + ' preguntas';
   document.getElementById('quizTitle').textContent = 'Cuestionario';
+  
+  var html = '';
+  var i = 0;
+  
+  while (i < preguntas.length) {
+    var p = preguntas[i];
+    
+    if (p.texto_lectura) {
+      // Agrupar todas las preguntas con el mismo texto de lectura
+      var textoLectura = p.texto_lectura;
+      var grupoPreguntas = [];
+      while (i < preguntas.length && preguntas[i].texto_lectura === textoLectura) {
+        grupoPreguntas.push(preguntas[i]);
+        i++;
+      }
+      
+      // Renderizar el texto de lectura una vez
+      html += '<div class="scroll-group">';
+      html += '<div class="texto-lectura-box"><h3>&#128214; Texto de lectura</h3><p>' + textoLectura + '</p></div>';
+      
+      // Renderizar todas las preguntas del grupo en scroll
+      html += '<div class="preguntas-scroll">';
+      grupoPreguntas.forEach(function(p, idx) {
+        html += renderQuestion(p, idx);
+      });
+      html += '</div></div>';
+    } else {
+      // Pregunta sin texto de lectura - renderizar individualmente
+      html += renderQuestion(p, 0);
+      i++;
+    }
+  }
+  
+  document.getElementById('quizContent').innerHTML = html;
+  document.getElementById('btnFinalizar').style.display = 'inline-flex';
+}
+
+function renderQuestion(p, idx) {
   var selected = respuestas[p.id] || '';
-  var html = '<div class="question-card"><h3>' + (idx + 1) + '. ' + p.texto + '</h3>';
+  var html = '<div class="question-card">';
+  
+  // Buscar el índice real de la pregunta en el array preguntas
+  var realIdx = preguntas.indexOf(p);
+  html += '<h3>' + (realIdx + 1) + '. ' + p.texto + '</h3>';
+  
   if (p.imagen) html += '<img src="' + p.imagen + '" alt="Imagen de pregunta">';
+  
   ['A', 'B', 'C', 'D'].forEach(function(opt) {
     var val = p['opcion_' + opt.toLowerCase()];
     var imgKey = 'imagen_opcion_' + opt.toLowerCase();
@@ -72,15 +158,9 @@ function showQuestion(idx) {
     if (val) html += '<span>' + val + '</span>';
     html += '</div>';
   });
+  
   html += '</div>';
-  html += '<div class="actions" style="justify-content:center;gap:12px">';
-  if (idx > 0) html += '<button class="btn btn-secondary" onclick="showQuestion(' + (idx - 1) + ')">&#8592; Anterior</button>';
-  if (idx < preguntas.length - 1) html += '<button class="btn btn-primary" onclick="showQuestion(' + (idx + 1) + ')">Siguiente &#8594;</button>';
-  html += '</div>';
-  document.getElementById('quizContent').innerHTML = html;
-
-  if (idx === preguntas.length - 1) document.getElementById('btnFinalizar').style.display = 'inline-flex';
-  else document.getElementById('btnFinalizar').style.display = 'none';
+  return html;
 }
 
 function selectOption(pid, opt, el) {
@@ -95,11 +175,10 @@ function selectOption(pid, opt, el) {
 }
 
 function finalizar() {
-  if (!confirm('Seguro que desea finalizar el cuestionario?')) return;
-  clearInterval(timerInterval);
-  fetch('/api/intentos/' + intentoId + '/finalizar', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(d) {
-    window.location.href = '/student/resultados.html?intento=' + intentoId;
-  });
+  if (!confirm('¿Estás seguro de finalizar el cuestionario?')) return;
+  fetch('/api/intentos/' + intentoId + '/finalizar', { method: 'PUT' })
+    .then(function() { window.location.href = '/student/resultados.html?intento=' + intentoId; });
 }
 </script>
-</body></html>
+</body>
+</html>

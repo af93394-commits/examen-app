@@ -310,7 +310,7 @@ const uploadPregunta = upload.fields([
 
 app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
   try {
-    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id } = req.body;
+    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, texto_lectura } = req.body;
     if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
     let imagen = null, imgA = null, imgB = null, imgC = null, imgD = null;
     if (req.files && req.files['imagen']) imagen = await uploadToCloudinary(req.files['imagen'][0].buffer, 'examen/preguntas');
@@ -318,15 +318,15 @@ app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
     if (req.files && req.files['imagen_opcion_b']) imgB = await uploadToCloudinary(req.files['imagen_opcion_b'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_c']) imgC = await uploadToCloudinary(req.files['imagen_opcion_c'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
-    const r = await db.query('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id',
-      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD]);
+    const r = await db.query('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d, texto_lectura) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id',
+      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD, texto_lectura || null]);
     res.json({ id: r.rows[0].id, message: 'Pregunta creada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => {
   try {
     const { id } = req.params;
-    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, imagen_existente, materia_id,
+    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, imagen_existente, materia_id, texto_lectura,
             imagen_opcion_a_existente, imagen_opcion_b_existente, imagen_opcion_c_existente, imagen_opcion_d_existente } = req.body;
     let imagen = imagen_existente || null;
     let imgA = imagen_opcion_a_existente || null;
@@ -338,8 +338,8 @@ app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => 
     if (req.files && req.files['imagen_opcion_b']) imgB = await uploadToCloudinary(req.files['imagen_opcion_b'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_c']) imgC = await uploadToCloudinary(req.files['imagen_opcion_c'][0].buffer, 'examen/opciones');
     if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
-    const r = await db.query('UPDATE preguntas SET texto=$1, imagen=$2, opcion_a=$3, opcion_b=$4, opcion_c=$5, opcion_d=$6, respuesta_correcta=$7, materia_id=$8, imagen_opcion_a=$9, imagen_opcion_b=$10, imagen_opcion_c=$11, imagen_opcion_d=$12 WHERE id=$13',
-      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, imgA, imgB, imgC, imgD, id]);
+    const r = await db.query('UPDATE preguntas SET texto=$1, imagen=$2, opcion_a=$3, opcion_b=$4, opcion_c=$5, opcion_d=$6, respuesta_correcta=$7, materia_id=$8, imagen_opcion_a=$9, imagen_opcion_b=$10, imagen_opcion_c=$11, imagen_opcion_d=$12, texto_lectura=$13 WHERE id=$14',
+      [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, imgA, imgB, imgC, imgD, texto_lectura || null, id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
     res.json({ message: 'Pregunta actualizada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
