@@ -684,24 +684,6 @@
   ],
   "cuestionario_preguntas": [
     {
-      "id": 1,
-      "cuestionario_id": 2,
-      "pregunta_id": 1,
-      "orden": 0
-    },
-    {
-      "id": 2,
-      "cuestionario_id": 4,
-      "pregunta_id": 3,
-      "orden": 0
-    },
-    {
-      "id": 3,
-      "cuestionario_id": 5,
-      "pregunta_id": 4,
-      "orden": 0
-    },
-    {
       "id": 22,
       "cuestionario_id": 9,
       "pregunta_id": 17,
