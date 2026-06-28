@@ -109,11 +109,11 @@ function renderAll() {
   while (i < preguntas.length) {
     var p = preguntas[i];
     
-    if (p.texto_lectura) {
+    if (p.texto_lectura_contenido) {
       // Agrupar todas las preguntas con el mismo texto de lectura
-      var textoLectura = p.texto_lectura;
+      var textoLectura = p.texto_lectura_contenido;
       var grupoPreguntas = [];
-      while (i < preguntas.length && preguntas[i].texto_lectura === textoLectura) {
+      while (i < preguntas.length && preguntas[i].texto_lectura_contenido === textoLectura) {
         grupoPreguntas.push(preguntas[i]);
         i++;
       }

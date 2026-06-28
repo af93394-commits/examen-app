@@ -30,6 +30,18 @@
 <table><thead><tr><th>ID</th><th>Pregunta</th><th>Materia</th><th>Imagen</th><th>Correcta</th><th>Acciones</th></tr></thead>
 <tbody id="tablaPreguntas"></tbody></table>
 </div>
+
+<div style="margin-top:30px;background:#f8fafc;border:2px solid #e2e8f0;border-radius:12px;padding:20px">
+<h2 style="margin-bottom:16px">&#128214; Textos de Lectura por Cuestionario</h2>
+<div style="margin-bottom:16px">
+<label style="font-weight:600;margin-right:8px">Seleccionar cuestionario:</label>
+<select id="selectCuestionarioTextos" onchange="loadTextos()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;min-width:300px">
+<option value="">Seleccione cuestionario...</option>
+</select>
+<button class="btn btn-primary" onclick="openTextoModal()" style="margin-left:8px">+ Nuevo Texto</button>
+</div>
+<div id="textosContainer"></div>
+</div>
 </div>
 <div class="modal-overlay" id="modal">
 <div class="modal" style="max-width:600px">
@@ -203,6 +215,7 @@ function loadMaterias() {
       filtro.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
     });
     load();
+    loadCuestionariosForTextos();
   });
 }
 
@@ -335,6 +348,124 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
 function deletePregunta(id) {
   if (!confirm('Eliminar esta pregunta?')) return;
   fetch('/api/preguntas/' + id, { method: 'DELETE' }).then(function() { load(); });
+}
+
+// ============ TEXTOS DE LECTURA ============
+var cuestionariosList = [];
+var editingTexto = false;
+
+function loadCuestionariosForTextos() {
+  fetch('/api/cuestionarios').then(function(r) { return r.json(); }).then(function(d) {
+    cuestionariosList = d.cuestionarios;
+    var sel = document.getElementById('selectCuestionarioTextos');
+    sel.innerHTML = '<option value="">Seleccione cuestionario...</option>';
+    cuestionariosList.forEach(function(c) {
+      sel.innerHTML += '<option value="' + c.id + '">' + c.nombre + ' (' + c.total_preguntas + ' preguntas)</option>';
+    });
+  });
+}
+
+function loadTextos() {
+  var cuestId = document.getElementById('selectCuestionarioTextos').value;
+  if (!cuestId) { document.getElementById('textosContainer').innerHTML = '<p style="color:#94a3b8">Seleccione un cuestionario para ver sus textos</p>'; return; }
+  
+  fetch('/api/cuestionarios/' + cuestId + '/textos').then(function(r) { return r.json(); }).then(function(d) {
+    var container = document.getElementById('textosContainer');
+    if (d.textos.length === 0) {
+      container.innerHTML = '<p style="color:#94a3b8;padding:20px;text-align:center">No hay textos de lectura para este cuestionario</p>';
+      return;
+    }
+    
+    // Load questions for this cuestionario
+    fetch('/api/cuestionarios/' + cuestId + '/preguntas').then(function(r) { return r.json(); }).then(function(d2) {
+      var preguntas = d2.preguntas;
+      
+      var html = '<div style="display:flex;flex-direction:column;gap:16px">';
+      d.textos.forEach(function(t) {
+        var preguntasDelTexto = preguntas.filter(function(p) { return p.texto_lectura_id === t.id; });
+        var preguntasSinTexto = preguntas.filter(function(p) { return !p.texto_lectura_id; });
+        
+        html += '<div style="background:#fff;border:2px solid #e2e8f0;border-radius:8px;padding:16px">';
+        html += '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">';
+        html += '<strong style="color:#1e40af">&#128214; ' + t.titulo + '</strong>';
+        html += '<div>';
+        html += '<button class="btn btn-sm btn-primary" onclick="editTexto(' + JSON.stringify(t).replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
+        html += '<button class="btn btn-sm btn-danger" onclick="deleteTexto(' + t.id + ')">&#128465; Eliminar</button>';
+        html += '</div></div>';
+        html += '<p style="color:#64748b;font-size:13px;white-space:pre-wrap;max-height:100px;overflow-y:auto;background:#f8fafc;padding:8px;border-radius:4px;margin:8px 0">' + t.texto.substring(0, 200) + (t.texto.length > 200 ? '...' : '') + '</p>';
+        
+        // Preguntas asignadas a este texto
+        html += '<div style="margin-top:8px"><strong style="font-size:12px;color:#374151">Preguntas asignadas (' + preguntasDelTexto.length + '):</strong>';
+        if (preguntasDelTexto.length > 0) {
+          html += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:4px">';
+          preguntasDelTexto.forEach(function(p) {
+            var txt = p.texto.length > 40 ? p.texto.substring(0, 40).replace(/\n/g, ' ') + '...' : p.texto.replace(/\n/g, ' ');
+            html += '<span style="background:#dbeafe;color:#1e40af;padding:4px 8px;border-radius:4px;font-size:12px">' + p.id + ': ' + txt + '</span>';
+          });
+          html += '</div>';
+        } else {
+          html += '<p style="color:#94a3b8;font-size:12px;margin-top:4px">No hay preguntas asignadas</p>';
+        }
+        html += '</div></div>';
+      });
+      html += '</div>';
+      container.innerHTML = html;
+    });
+  });
+}
+
+function openTextoModal(texto) {
+  editingTexto = !!texto;
+  var modal = document.createElement('div');
+  modal.id = 'textoModal';
+  modal.className = 'modal-overlay active';
+  modal.innerHTML = '<div class="modal" style="max-width:600px"><button class="close" onclick="closeTextoModal()">&times;</button>' +
+    '<h2>' + (editingTexto ? 'Editar Texto' : 'Nuevo Texto de Lectura') + '</h2>' +
+    '<form id="textoForm"><div class="form-group"><label>Titulo descriptivo</label>' +
+    '<input type="text" id="fTextoTitulo" value="' + (texto ? texto.titulo : '') + '" required placeholder="Ej: Carta de Gustave a su madre"></div>' +
+    '<div class="form-group"><label>Texto completo</label>' +
+    '<textarea id="fTextoContenido" rows="10" required placeholder="Pegar aquí el texto completo de lectura...">' + (texto ? texto.texto : '') + '</textarea></div>' +
+    '<div class="form-group"><label>Orden (para mostrar en el cuestionario)</label>' +
+    '<input type="number" id="fTextoOrden" value="' + (texto ? texto.orden : 0) + '"></div>' +
+    '<input type="hidden" id="fTextoId" value="' + (texto ? texto.id : '') + '">' +
+    '<button type="submit" class="btn btn-primary btn-block">Guardar Texto</button></form></div>';
+  document.body.appendChild(modal);
+  
+  document.getElementById('textoForm').onsubmit = function(e) {
+    e.preventDefault();
+    saveTexto();
+  };
+}
+
+function closeTextoModal() {
+  var modal = document.getElementById('textoModal');
+  if (modal) modal.remove();
+}
+
+function editTexto(texto) {
+  openTextoModal(texto);
+}
+
+function saveTexto() {
+  var cuestId = document.getElementById('selectCuestionarioTextos').value;
+  var id = document.getElementById('fTextoId').value;
+  var data = {
+    titulo: document.getElementById('fTextoTitulo').value,
+    texto: document.getElementById('fTextoContenido').value,
+    orden: parseInt(document.getElementById('fTextoOrden').value) || 0
+  };
+  
+  var url = editingTexto ? '/api/textos/' + id : '/api/cuestionarios/' + cuestId + '/textos';
+  var method = editingTexto ? 'PUT' : 'POST';
+  
+  fetch(url, { method: method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) })
+    .then(function(r) { return r.json(); })
+    .then(function() { closeTextoModal(); loadTextos(); });
+}
+
+function deleteTexto(id) {
+  if (!confirm('Eliminar este texto? Las preguntas asociadas perderán la referencia.')) return;
+  fetch('/api/textos/' + id, { method: 'DELETE' }).then(function() { loadTextos(); });
 }
 
 function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }

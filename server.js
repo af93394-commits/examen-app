@@ -352,6 +352,48 @@ app.delete('/api/preguntas/:id', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ============ TEXTOS DE LECTURA ============
+app.get('/api/cuestionarios/:id/textos', requireAuth, async (req, res) => {
+  try {
+    const r = await db.query('SELECT * FROM textos_lectura WHERE cuestionario_id = $1 ORDER BY orden, id', [req.params.id]);
+    res.json({ textos: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/cuestionarios/:id/textos', requireAdmin, async (req, res) => {
+  try {
+    const { titulo, texto, orden } = req.body;
+    if (!titulo || !texto) return res.status(400).json({ error: 'Titulo y texto requeridos' });
+    const r = await db.query('INSERT INTO textos_lectura (titulo, texto, cuestionario_id, orden) VALUES ($1,$2,$3,$4) RETURNING id',
+      [titulo, texto, req.params.id, orden || 0]);
+    res.json({ id: r.rows[0].id, message: 'Texto creado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/textos/:id', requireAdmin, async (req, res) => {
+  try {
+    const { titulo, texto, orden } = req.body;
+    const r = await db.query('UPDATE textos_lectura SET titulo=$1, texto=$2, orden=$3 WHERE id=$4',
+      [titulo, texto, orden || 0, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
+    res.json({ message: 'Texto actualizado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/textos/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.query('UPDATE preguntas SET texto_lectura_id = NULL WHERE texto_lectura_id = $1', [req.params.id]);
+    const r = await db.query('DELETE FROM textos_lectura WHERE id = $1', [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrado' });
+    res.json({ message: 'Texto eliminado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/preguntas/:id/asignar-texto', requireAdmin, async (req, res) => {
+  try {
+    const { texto_lectura_id } = req.body;
+    const r = await db.query('UPDATE preguntas SET texto_lectura_id = $1 WHERE id = $2', [texto_lectura_id || null, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Pregunta no encontrada' });
+    res.json({ message: 'Texto asignado' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============ CUESTIONARIOS ============
 app.get('/api/cuestionarios', requireAuth, async (req, res) => {
   try {
@@ -418,9 +460,12 @@ app.delete('/api/cuestionarios/:cid/preguntas/:pid', requireAdmin, async (req, r
 });
 app.get('/api/cuestionarios/:id/preguntas', requireAuth, async (req, res) => {
   try {
-    const r = await db.query(`SELECT p.*, m.nombre as materia_nombre FROM preguntas p
+    const r = await db.query(`SELECT p.*, m.nombre as materia_nombre, p.texto_lectura_id,
+      t.texto as texto_lectura_contenido, t.titulo as texto_lectura_titulo
+      FROM preguntas p
       JOIN cuestionario_preguntas cp ON p.id = cp.pregunta_id
       LEFT JOIN materias m ON p.materia_id = m.id
+      LEFT JOIN textos_lectura t ON p.texto_lectura_id = t.id
       WHERE cp.cuestionario_id = $1 ORDER BY cp.orden`, [req.params.id]);
     res.json({ preguntas: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
