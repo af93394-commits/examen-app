@@ -1,4 +1,4 @@
-﻿const express = require('express');
+const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
 const bodyParser = require('body-parser');
@@ -291,13 +291,25 @@ app.delete('/api/usuarios/:id', requireAdmin, async (req, res) => {
 // ============ PREGUNTAS ============
 app.get('/api/preguntas', requireAuth, async (req, res) => {
   try {
-    const { materia_id } = req.query;
+    const { materia_id, page = 1, limit = 50, search } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     let sql = 'SELECT p.*, m.nombre as materia_nombre FROM preguntas p LEFT JOIN materias m ON p.materia_id = m.id';
-    let params = [];
-    if (materia_id) { sql += ' WHERE p.materia_id = $1'; params = [materia_id]; }
-    sql += ' ORDER BY p.id DESC';
+    let countSql = 'SELECT COUNT(*) as total FROM preguntas p';
+    const conditions = [];
+    const params = [];
+    if (materia_id) { conditions.push('p.materia_id = $' + (params.length + 1)); params.push(materia_id); }
+    if (search) { conditions.push('p.texto ILIKE $' + (params.length + 1)); params.push('%' + search + '%'); }
+    if (conditions.length > 0) {
+      const where = ' WHERE ' + conditions.join(' AND ');
+      sql += where;
+      countSql += where;
+    }
+    const countResult = await db.query(countSql, params);
+    const total = parseInt(countResult.rows[0].total);
+    sql += ' ORDER BY p.id DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+    params.push(parseInt(limit), offset);
     const r = await db.query(sql, params);
-    res.json({ preguntas: r.rows });
+    res.json({ preguntas: r.rows, total, page: parseInt(page), limit: parseInt(limit) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 const uploadPregunta = upload.fields([

@@ -22,13 +22,17 @@
 <div class="page-header"><h1>Gestionar Preguntas</h1><button class="btn btn-primary" onclick="openModal()">+ Nueva Pregunta</button></div>
 <div style="margin-bottom:16px">
 <label style="font-weight:600;margin-right:8px">Filtrar por materia:</label>
-<select id="filtroMateria" onchange="load()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px">
+<select id="filtroMateria" onchange="resetPage();load()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px">
 <option value="">Todas las materias</option>
-</select>
+</select></div>
+<div><label style="font-weight:600;margin-right:8px">Buscar:</label>
+<input type="text" id="searchInput" placeholder="Buscar pregunta..." oninput="debounceSearch()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;min-width:250px"></div>
+<div id="paginationInfo" style="color:#64748b;font-size:13px"></div>
 </div>
 <div class="table-container">
 <table><thead><tr><th>ID</th><th>Pregunta</th><th>Materia</th><th>Imagen</th><th>Correcta</th><th>Acciones</th></tr></thead>
 <tbody id="tablaPreguntas"></tbody></table>
+<div id="paginationControls" style="margin-top:12px;display:flex;justify-content:center;align-items:center;gap:8px"></div>
 </div>
 
 <div style="margin-top:30px;background:#f8fafc;border:2px solid #e2e8f0;border-radius:12px;padding:20px">
@@ -219,29 +223,64 @@ function loadMaterias() {
   });
 }
 
+
+var currentPage = 1;
+var currentLimit = 50;
+var preguntasMap = {};
+var searchTimeout = null;
+
+function debounceSearch() {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(function() { resetPage(); load(); }, 300);
+}
+
+function resetPage() { currentPage = 1; }
+
+function goToPage(page) { currentPage = page; load(); }
+
 function load() {
   var filtro = document.getElementById('filtroMateria').value;
-  var url = '/api/preguntas' + (filtro ? '?materia_id=' + filtro : '');
+  var search = document.getElementById('searchInput').value;
+  var params = [];
+  if (filtro) params.push('materia_id=' + filtro);
+  if (search) params.push('search=' + encodeURIComponent(search));
+  params.push('page=' + currentPage);
+  params.push('limit=' + currentLimit);
+  var url = '/api/preguntas' + (params.length ? '?' + params.join('&') : '');
   fetch(url).then(function(r) { return r.json(); }).then(function(d) {
+    preguntasMap = {};
+    d.preguntas.forEach(function(p) { preguntasMap[p.id] = p; });
     var tb = document.getElementById('tablaPreguntas');
-    tb.innerHTML = '';
+    var fragment = document.createDocumentFragment();
+    var startIdx = (d.page - 1) * d.limit;
     d.preguntas.forEach(function(p, idx) {
       var txt = p.texto.length > 60 ? p.texto.substring(0, 60).replace(/\n/g, ' ') + '...' : p.texto.replace(/\n/g, ' ');
       var img = p.imagen ? '<span style="color:#16a34a">&#10003;</span>' : '<span style="color:#94a3b8">No</span>';
-      var lectura = p.texto_lectura ? '<span style="color:#2563eb;font-size:11px"> &#128214; Lectura</span>' : '';
+      var lectura = p.texto_lectura_id ? '<span style="color:#2563eb;font-size:11px"> &#128214; Lectura</span>' : '';
       var materia = p.materia_nombre || 'Sin materia';
-      var row = '<tr><td>' + (idx + 1) + '</td><td>' + txt + lectura + '</td><td><span class="badge badge-admin">' + materia + '</span></td><td>' + img + '</td>';
-      row += '<td><strong>' + p.respuesta_correcta + '</strong></td>';
-      row += '<td class="actions"><button class="btn btn-sm btn-primary" onclick="editPregunta(' + JSON.stringify(p).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
-      row += '<button class="btn btn-sm btn-danger" onclick="deletePregunta(' + p.id + ')">&#128465; Eliminar</button></td></tr>';
-      tb.innerHTML += row;
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td>' + (startIdx + idx + 1) + '</td><td>' + txt + lectura + '</td><td><span class="badge badge-admin">' + materia + '</span></td><td>' + img + '</td><td><strong>' + p.respuesta_correcta + '</strong></td><td class="actions"><button class="btn btn-sm btn-primary" onclick="editPregunta(preguntasMap[' + p.id + '])">&#9998; Editar</button> <button class="btn btn-sm btn-danger" onclick="deletePregunta(' + p.id + ')">&#128465; Eliminar</button></td>';
+      fragment.appendChild(tr);
     });
+    tb.innerHTML = '';
     if (d.preguntas.length === 0) {
       tb.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#94a3b8;padding:40px">No hay preguntas registradas</td></tr>';
+    } else {
+      tb.appendChild(fragment);
     }
+    var totalPages = Math.ceil(d.total / d.limit);
+    document.getElementById('paginationInfo').textContent = 'Mostrando ' + (startIdx + 1) + '-' + Math.min(startIdx + d.preguntas.length, d.total) + ' de ' + d.total + ' preguntas';
+    var pc = document.getElementById('paginationControls');
+    if (totalPages <= 1) { pc.innerHTML = ''; return; }
+    var html = '';
+    html += '<button class="btn btn-sm" onclick="goToPage(1)" ' + (d.page === 1 ? 'disabled' : '') + '>&#171; Primera</button> ';
+    html += '<button class="btn btn-sm" onclick="goToPage(' + (d.page - 1) + ')" ' + (d.page === 1 ? 'disabled' : '') + '>&#8249; Anterior</button> ';
+    html += '<span style="padding:8px 12px;font-size:13px;color:#374151">P\u00e1gina ' + d.page + ' de ' + totalPages + '</span> ';
+    html += '<button class="btn btn-sm" onclick="goToPage(' + (d.page + 1) + ')" ' + (d.page === totalPages ? 'disabled' : '') + '>Siguiente &#8250;</button> ';
+    html += '<button class="btn btn-sm" onclick="goToPage(' + totalPages + ')" ' + (d.page === totalPages ? 'disabled' : '') + '>&#218;ltima &#187;</button>';
+    pc.innerHTML = html;
   });
 }
-
 function openModal() {
   editing = false;
   document.getElementById('modalTitle').textContent = 'Nueva Pregunta';
