@@ -4,8 +4,38 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Mis Resultados</title>
 <link rel="stylesheet" href="/css/styles.css">
+<style>
+.celebration-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 9999; overflow: hidden; }
+.score-circle { width: 180px; height: 180px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; margin: 0 auto 24px; position: relative; }
+.score-circle::before { content: ''; position: absolute; inset: -8px; border-radius: 50%; border: 4px solid; animation: dinoBounce 2s ease-in-out infinite; }
+.score-circle.great { background: linear-gradient(135deg, #dcfce7, #bbf7d0); }
+.score-circle.great::before { border-color: #16a34a; }
+.score-circle.good { background: linear-gradient(135deg, #fef3c7, #fde68a); }
+.score-circle.good::before { border-color: #f59e0b; }
+.score-circle.poor { background: linear-gradient(135deg, #fee2e2, #fecaca); }
+.score-circle.poor::before { border-color: #dc2626; }
+.dino-mascot { font-size: 64px; margin-bottom: 16px; animation: dinoBounce 1.5s ease-in-out infinite; }
+.dino-speech { background: #fff; border-radius: 16px; padding: 16px 24px; margin-bottom: 24px; position: relative; box-shadow: 0 4px 12px rgba(0,0,0,.1); display: inline-block; max-width: 400px; }
+.dino-speech::after { content: ''; position: absolute; bottom: -10px; left: 50%; transform: translateX(-50%); border: 10px solid transparent; border-top-color: #fff; }
+.progress-bar-container { background: #e2e8f0; border-radius: 12px; height: 24px; overflow: hidden; margin: 8px 0; }
+.progress-bar-fill { height: 100%; border-radius: 12px; transition: width 1.5s ease-out; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 12px; }
+.progress-bar-fill.great { background: linear-gradient(90deg, #16a34a, #22c55e); }
+.progress-bar-fill.good { background: linear-gradient(90deg, #f59e0b, #eab308); }
+.progress-bar-fill.poor { background: linear-gradient(90deg, #dc2626, #ef4444); }
+.stat-box { display: flex; gap: 16px; justify-content: center; flex-wrap: wrap; margin: 24px 0; }
+.stat-item { background: #fff; border-radius: 12px; padding: 16px 24px; text-align: center; box-shadow: 0 2px 8px rgba(0,0,0,.08); min-width: 120px; }
+.stat-item .number { font-size: 36px; font-weight: 700; }
+.stat-item .label { font-size: 13px; color: #64748b; margin-top: 4px; }
+.stat-item.correct .number { color: #16a34a; }
+.stat-item.incorrect .number { color: #dc2626; }
+.stat-item.total .number { color: #2563eb; }
+.motivational-msg { text-align: center; font-size: 18px; font-weight: 600; margin: 16px 0; }
+.result-card { transition: transform 0.2s; }
+.result-card:hover { transform: translateY(-2px); }
+</style>
 </head>
 <body>
+<div class="celebration-container" id="celebrationContainer"></div>
 <div class="sidebar">
 <div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
 <nav>
@@ -33,23 +63,49 @@ function loadResultado(id) {
   fetch('/api/intentos/' + id + '/resultados').then(function(r) { return r.json(); }).then(function(d) {
     var it = d.intento;
     var pct = it.total_preguntas ? Math.round((it.puntuacion / it.total_preguntas) * 100) : 0;
-    var color = pct >= 60 ? '#16a34a' : '#dc2626';
+    
+    var level, color, msg, dinoClass;
+    if (pct >= 80) {
+      level = 'great'; color = '#16a34a';
+      msg = '&#129430; &#127881; &#129431; &#10024; &#127775;';
+      dinoClass = 'dino-celebrate';
+    } else if (pct >= 60) {
+      level = 'good'; color = '#f59e0b';
+      msg = '&#129430; &#128077; &#127775;';
+      dinoClass = 'dino-bounce';
+    } else {
+      level = 'poor'; color = '#dc2626';
+      msg = '&#129430; &#128170; &#127793;';
+      dinoClass = '';
+    }
+
+    if (pct >= 60) startCelebration();
 
     var html = '<div class="page-header"><h1>Resultado del Cuestionario</h1></div>';
 
-    html += '<div class="result-score">';
-    html += '<h2 style="color:' + color + '">' + it.puntuacion + ' / ' + it.total_preguntas + '</h2>';
-    html += '<p style="font-size:20px;font-weight:700;color:' + color + '">' + pct + '% de aciertos</p>';
-    html += '<p style="margin-top:8px;font-size:13px;color:#64748b">' + (it.completado ? 'Completado' : 'En progreso') + '</p>';
+    // Dino mascot
+    html += '<div class="dino-mascot ' + dinoClass + '">&#129430;</div>';
+    html += '<div class="dino-speech"><div class="motivational-msg">' + msg + '</div></div>';
+
+    // Score circle
+    html += '<div class="score-circle ' + level + ' score-reveal">';
+    html += '<div style="font-size:48px;font-weight:700;color:' + color + '">' + pct + '%</div>';
+    html += '<div style="font-size:14px;color:#64748b">' + it.puntuacion + '/' + it.total_preguntas + '</div>';
     html += '</div>';
 
-    html += '<div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)">';
-    html += '<h3 style="margin-bottom:12px">Resumen</h3>';
-    html += '<div style="display:flex;gap:24px;flex-wrap:wrap">';
-    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#16a34a">' + it.puntuacion + '</div><div style="color:#64748b;font-size:13px">Correctas</div></div>';
-    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#dc2626">' + (it.total_preguntas - it.puntuacion) + '</div><div style="color:#64748b;font-size:13px">Incorrectas</div></div>';
-    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#2563eb">' + it.total_preguntas + '</div><div style="color:#64748b;font-size:13px">Total</div></div>';
-    html += '</div></div>';
+    // Progress bar
+    html += '<div style="max-width:500px;margin:0 auto 24px">';
+    html += '<div style="display:flex;justify-content:space-between;font-size:13px;color:#64748b;margin-bottom:4px">';
+    html += '<span>Progreso</span><span>' + pct + '%</span></div>';
+    html += '<div class="progress-bar-container"><div class="progress-bar-fill ' + level + ' progress-animated" style="width:0%">' + pct + '%</div></div>';
+    html += '</div>';
+
+    // Stats boxes
+    html += '<div class="stat-box">';
+    html += '<div class="stat-item correct"><div class="number">' + it.puntuacion + '</div><div class="label">Correctas</div></div>';
+    html += '<div class="stat-item incorrect"><div class="number">' + (it.total_preguntas - it.puntuacion) + '</div><div class="label">Incorrectas</div></div>';
+    html += '<div class="stat-item total"><div class="number">' + it.total_preguntas + '</div><div class="label">Total</div></div>';
+    html += '</div>';
 
     html += '<h2 style="margin-bottom:16px">Respuestas detalladas</h2>';
 
@@ -57,11 +113,12 @@ function loadResultado(id) {
       var cls = r.es_correcta ? 'result-correct' : 'result-incorrect';
       var icon = r.es_correcta ? '&#10003;' : '&#10007;';
       var iconColor = r.es_correcta ? '#16a34a' : '#dc2626';
+      var dinoReaction = r.es_correcta ? ' &#129430;' : ' &#128542;';
 
       html += '<div class="result-card ' + cls + '">';
       html += '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">';
       html += '<h4 style="flex:1">' + (i + 1) + '. ' + r.texto + '</h4>';
-      html += '<span style="font-size:24px;color:' + iconColor + ';margin-left:12px">' + icon + '</span>';
+      html += '<span style="font-size:24px;color:' + iconColor + ';margin-left:12px">' + icon + dinoReaction + '</span>';
       html += '</div>';
 
       if (r.imagen) html += '<img src="' + r.imagen + '" style="max-width:100%;border-radius:8px;margin-bottom:12px">';
@@ -104,7 +161,39 @@ function loadResultado(id) {
 
     html += '<div style="text-align:center;margin-top:24px"><a href="/student/dashboard.html" class="btn btn-primary">Volver al Dashboard</a></div>';
     document.getElementById('resultadoDetalle').innerHTML = html;
+    
+    // Animate progress bar
+    setTimeout(function() {
+      var bar = document.querySelector('.progress-bar-fill');
+      if (bar) bar.style.width = pct + '%';
+    }, 100);
   });
+}
+
+function startCelebration() {
+  var container = document.getElementById('celebrationContainer');
+  var dinos = ['&#129430;', '&#129431;', '&#128038;', '&#128036;', '&#128037;', '&#129409;'];
+  
+  for (var i = 0; i < 15; i++) {
+    (function(idx) {
+      setTimeout(function() {
+        var dino = document.createElement('div');
+        dino.className = 'confetti dino';
+        dino.innerHTML = dinos[Math.floor(Math.random() * dinos.length)];
+        dino.style.left = Math.random() * 100 + '%';
+        dino.style.animationDuration = (2 + Math.random() * 3) + 's';
+        container.appendChild(dino);
+        setTimeout(function() { dino.remove(); }, 5000);
+      }, idx * 200);
+    })(i);
+  }
+  
+  // Dino walker
+  var walker = document.createElement('div');
+  walker.className = 'dino-walker';
+  walker.innerHTML = '&#129430;';
+  document.body.appendChild(walker);
+  setTimeout(function() { walker.remove(); }, 8000);
 }
 
 function loadHistorial() {
@@ -119,10 +208,16 @@ function loadHistorial() {
     d.intentos.forEach(function(it) {
       var pct = it.total_preguntas ? Math.round((it.puntuacion / it.total_preguntas) * 100) : 0;
       var cls = pct >= 60 ? 'badge-active' : 'badge-inactive';
+      var dinoIcon = pct >= 80 ? '&#129430;' : (pct >= 60 ? '&#128038;' : '&#128542;');
 
       var html = '<div class="card">';
-      html += '<div class="card-header"><h3>' + it.cuestionario_titulo + '</h3>';
+      html += '<div class="card-header"><h3>' + dinoIcon + ' ' + it.cuestionario_titulo + '</h3>';
       html += '<span class="badge ' + cls + '">' + pct + '%</span></div>';
+      
+      // Mini progress bar
+      html += '<div class="progress-bar-container" style="height:8px;margin:8px 0">';
+      html += '<div class="progress-bar-fill ' + (pct >= 60 ? 'great' : 'poor') + '" style="width:' + pct + '%"></div></div>';
+      
       html += '<p style="color:#64748b">Puntaje: ' + it.puntuacion + '/' + it.total_preguntas + ' | ' + (it.completado ? 'Completado' : 'Incompleto') + '</p>';
       html += '<p style="color:#94a3b8;font-size:12px">' + it.inicio_en + '</p>';
       html += '<div class="actions" style="margin-top:8px">';

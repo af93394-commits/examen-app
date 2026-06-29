@@ -50,6 +50,34 @@
   background: #94a3b8;
   border-radius: 3px;
 }
+
+/* Progress bar */
+.quiz-progress-bar {
+  width: 100%;
+  height: 8px;
+  background: #e2e8f0;
+  border-radius: 4px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.quiz-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #16a34a);
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+/* Answer counter */
+.quiz-stats {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.quiz-stats .correct { color: #16a34a; }
+.quiz-stats .incorrect { color: #dc2626; }
+.quiz-stats .pending { color: #94a3b8; }
 </style>
 </head>
 <body>
@@ -62,6 +90,12 @@
 <div class="quiz-timer" id="quizTimer">--:--</div>
 </div>
 </div>
+<div class="quiz-stats">
+<span class="correct" id="correctCount">&#10003; 0 correctas</span>
+<span class="incorrect" id="incorrectCount">&#10007; 0 incorrectas</span>
+<span class="pending" id="pendingCount">&#9201; 0 pendientes</span>
+</div>
+<div class="quiz-progress-bar"><div class="quiz-progress-fill" id="progressFill" style="width:0%"></div></div>
 <div id="quizContent"></div>
 <div style="text-align:center;margin-top:24px">
 <button class="btn btn-success btn-block" id="btnFinalizar" onclick="finalizar()" style="max-width:400px;display:none">Finalizar Cuestionario</button>
@@ -73,7 +107,7 @@ var params = new URLSearchParams(window.location.search);
 var intentoId = params.get('intento');
 var totalPreg = parseInt(params.get('total'));
 var cuestionarioId = params.get('cuestionario');
-var preguntas = [], currentIndex = 0, respuestas = {}, timerSeconds = 0, timerInterval;
+var preguntas = [], currentIndex = 0, respuestas = {}, timerSeconds = 0, timerInterval, correctCount = 0, incorrectCount = 0;
 
 if (!intentoId) { window.location.href = '/student/dashboard.html'; }
 
@@ -172,11 +206,66 @@ function selectOption(pid, opt, el) {
   respuestas[pid] = opt;
   el.parentElement.querySelectorAll('.option').forEach(function(o) { o.classList.remove('selected'); });
   el.classList.add('selected');
+  
+  // Find the question
+  var p = preguntas.find(function(q) { return q.id === pid; });
+  if (p) {
+    // Check if correct
+    var isCorrect = opt === p.respuesta_correcta;
+    
+    // Update counters
+    if (isCorrect) {
+      correctCount++;
+      el.classList.add('correct-flash');
+      showDinoCelebration(el);
+      showFloatingScore('+1', '#16a34a', el);
+    } else {
+      incorrectCount++;
+      el.classList.add('incorrect-flash');
+      showFloatingScore('X', '#dc2626', el);
+    }
+    updateStats();
+  }
+  
   fetch('/api/intentos/' + intentoId + '/responder', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ pregunta_id: pid, respuesta: opt })
   });
+}
+
+function updateStats() {
+  document.getElementById('correctCount').innerHTML = '&#10003; ' + correctCount + ' correctas';
+  document.getElementById('incorrectCount').innerHTML = '&#10007; ' + incorrectCount + ' incorrectas';
+  document.getElementById('pendingCount').innerHTML = '&#9201; ' + (preguntas.length - correctCount - incorrectCount) + ' pendientes';
+  var pct = Math.round(((correctCount + incorrectCount) / preguntas.length) * 100);
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+function showFloatingScore(text, color, targetEl) {
+  var rect = targetEl.getBoundingClientRect();
+  var div = document.createElement('div');
+  div.className = 'float-score';
+  div.textContent = text;
+  div.style.color = color;
+  div.style.left = (rect.left + rect.width / 2 - 15) + 'px';
+  div.style.top = (rect.top - 10) + 'px';
+  document.body.appendChild(div);
+  setTimeout(function() { div.remove(); }, 1000);
+}
+
+function showDinoCelebration(targetEl) {
+  if (Math.random() > 0.3) return; // 30% chance
+  
+  var dinos = ['&#129430;', '&#129431;', '&#128038;', '&#128036;', '&#128037;', '&#129409;'];
+  var dino = dinos[Math.floor(Math.random() * dinos.length)];
+  
+  var rect = targetEl.getBoundingClientRect();
+  var div = document.createElement('div');
+  div.innerHTML = dino;
+  div.style.cssText = 'position:fixed;font-size:32px;pointer-events:none;z-index:9999;animation:dinoBounce 0.8s ease-out forwards;left:' + (rect.right + 10) + 'px;top:' + (rect.top - 10) + 'px';
+  document.body.appendChild(div);
+  setTimeout(function() { div.remove(); }, 800);
 }
 
 function finalizar() {
