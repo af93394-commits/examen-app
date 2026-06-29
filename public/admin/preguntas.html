@@ -421,7 +421,7 @@ function loadCuestionariosForTextos() {
     var sel = document.getElementById('selectCuestionarioTextos');
     sel.innerHTML = '<option value="">Seleccione cuestionario...</option>';
     cuestionariosList.forEach(function(c) {
-      sel.innerHTML += '<option value="' + c.id + '">' + c.nombre + ' (' + c.total_preguntas + ' preguntas)</option>';
+      sel.innerHTML += '<option value="' + c.id + '">' + (c.titulo || 'Cuestionario ' + c.id) + ' (' + (c.total_preguntas || 0) + ' preguntas)</option>';
     });
   });
 }
