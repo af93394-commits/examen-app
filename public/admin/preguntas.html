@@ -20,14 +20,14 @@
 </div>
 <div class="main-content">
 <div class="page-header"><h1>Gestionar Preguntas</h1><button class="btn btn-primary" onclick="openModal()">+ Nueva Pregunta</button></div>
-<div style="margin-bottom:16px">
-<label style="font-weight:600;margin-right:8px">Filtrar por materia:</label>
+<div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+<div style="min-width:0"><label style="font-weight:600;margin-right:8px">Materia:</label>
 <select id="filtroMateria" onchange="resetPage();load()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px">
 <option value="">Todas las materias</option>
 </select></div>
-<div><label style="font-weight:600;margin-right:8px">Buscar:</label>
-<input type="text" id="searchInput" placeholder="Buscar pregunta..." oninput="debounceSearch()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;min-width:250px"></div>
-<div id="paginationInfo" style="color:#64748b;font-size:13px"></div>
+<div style="min-width:0"><label style="font-weight:600;margin-right:8px">Buscar:</label>
+<input type="text" id="searchInput" placeholder="Buscar pregunta..." oninput="debounceSearch()" style="padding:8px 12px;border:2px solid #e2e8f0;border-radius:8px;font-size:14px;width:100%;max-width:300px"></div>
+<div id="paginationInfo" style="color:#64748b;font-size:13px;min-width:0"></div>
 </div>
 <div class="table-container">
 <table><thead><tr><th>ID</th><th>Pregunta</th><th>Materia</th><th>Imagen</th><th>Correcta</th><th>Acciones</th></tr></thead>
