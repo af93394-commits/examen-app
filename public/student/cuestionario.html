@@ -203,6 +203,8 @@ function renderQuestion(p, idx) {
 }
 
 function selectOption(pid, opt, el) {
+  var prevOpt = respuestas[pid];
+  var alreadyAnswered = prevOpt !== undefined;
   respuestas[pid] = opt;
   el.parentElement.querySelectorAll('.option').forEach(function(o) { o.classList.remove('selected'); });
   el.classList.add('selected');
@@ -214,16 +216,35 @@ function selectOption(pid, opt, el) {
     var isCorrect = opt === p.respuesta_correcta;
     
     // Update counters
-    if (isCorrect) {
-      correctCount++;
-      el.classList.add('correct-flash');
-      showDinoHappy(el);
-      showFloatingScore('+1', '#16a34a', el);
+    if (!alreadyAnswered) {
+      // First time answering
+      if (isCorrect) {
+        correctCount++;
+        el.classList.add('correct-flash');
+        showDinoHappy(el);
+        showFloatingScore('+1', '#16a34a', el);
+      } else {
+        incorrectCount++;
+        el.classList.add('incorrect-flash');
+        showDinoSad(el);
+        showFloatingScore('X', '#dc2626', el);
+      }
     } else {
-      incorrectCount++;
-      el.classList.add('incorrect-flash');
-      showDinoSad(el);
-      showFloatingScore('X', '#dc2626', el);
+      // Answer changed - adjust counters
+      var wasCorrect = prevOpt === p.respuesta_correcta;
+      if (wasCorrect && !isCorrect) {
+        correctCount--;
+        incorrectCount++;
+        el.classList.add('incorrect-flash');
+        showDinoSad(el);
+        showFloatingScore('X', '#dc2626', el);
+      } else if (!wasCorrect && isCorrect) {
+        incorrectCount--;
+        correctCount++;
+        el.classList.add('correct-flash');
+        showDinoHappy(el);
+        showFloatingScore('+1', '#16a34a', el);
+      }
     }
     updateStats();
   }

@@ -232,6 +232,7 @@ Apartamento | Consumo de agua mensual en (m³)
 
 Según la información de la tabla, ¿cuál es el promedio de consumo de agua mensualmente en el edificio?', '/uploads/1782658789519-851279236.png', '32 metros cúbicos.', '13,3 metros cúbicos.', '80 metros cúbicos.', '26,6 metros cúbicos.', 'D', 1, 1, NULL, NULL, NULL, NULL) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionarios (id, titulo, descripcion, materia_id, tiempo_limite, activo, creado_por) VALUES (9, 'MATEMATICAS 3-Z1-2', 'Cuestionario de Matemáticas 3-Z1-2', 1, 60, 1, 1) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionarios (id, titulo, descripcion, materia_id, tiempo_limite, activo, creado_por) VALUES (15, 'SOCIALES_1 S1-X', 'Cuestionario de Ciencias Sociales', 4, 60, 1, 1) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (22, 9, 17, 1) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (23, 9, 18, 2) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (24, 9, 21, 6) ON CONFLICT DO NOTHING;
@@ -268,6 +269,15 @@ INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VAL
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (67, 9, 50, 34) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (68, 9, 51, 35) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (69, 9, 52, 36) ON CONFLICT DO NOTHING;
+
+INSERT INTO cuestionarios (id, titulo, descripcion, materia_id, tiempo_limite, activo, creado_por) VALUES (16, 'MATEMATICAS _1 COMPENDIO F -2 SESION', 'Cuestionario de Matematicas compendio F segunda sesion', 1, 60, 1, 1) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (28, 16, 571, 1) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (29, 16, 572, 2) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (30, 16, 573, 3) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (31, 16, 574, 4) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (32, 16, 575, 5) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (33, 16, 576, 6) ON CONFLICT DO NOTHING;
+INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (34, 16, 577, 7) ON CONFLICT DO NOTHING;
 
 SELECT setval('materias_id_seq', (SELECT COALESCE(MAX(id),1) FROM materias));
 SELECT setval('usuarios_id_seq', (SELECT COALESCE(MAX(id),1) FROM usuarios));

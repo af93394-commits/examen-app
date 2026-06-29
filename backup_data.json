@@ -668,6 +668,57 @@
       "imagen_opcion_b": null,
       "imagen_opcion_c": null,
       "imagen_opcion_d": null
+    },
+    {
+      "id": 496,
+      "texto": "Después de un proceso de negociación difícil con los trabajadores sobre diferentes reclamos respecto a sus condiciones laborales, las directivas de una empresa privada deciden establecer un nuevo reglamento interno. De acuerdo con este reglamento, los empleados que no pertenezcan a ninguna asociación de trabajadores de la empresa tendrán acceso a créditos, recibirán una bonificación salarial al finalizar el año y tendrán derecho a tres días más de vacaciones.\n\nA la luz de la Constitución Política de Colombia, con esta decisión, ¿cuál de los siguientes derechos de los trabajadores podría estar violando las directivas de la empresa?",
+      "imagen": null,
+      "opcion_a": "El derecho a acceder a la información.",
+      "opcion_b": "El derecho a constituir sindicatos.",
+      "opcion_c": "El derecho a manifestarse públicamente.",
+      "opcion_d": "El derecho a un trabajo estable.",
+      "respuesta_correcta": "X",
+      "materia_id": 4,
+      "creado_por": 1,
+      "creado_en": "2026-06-29 00:00:00",
+      "imagen_opcion_a": null,
+      "imagen_opcion_b": null,
+      "imagen_opcion_c": null,
+      "imagen_opcion_d": null
+    },
+    {
+      "id": 497,
+      "texto": "La industria de la crema de chocolate genera numerosos empleos en las grandes ciudades del país; ahora bien, uno de sus principales ingredientes es el aceite de palma, extraído de la palma africana, la cual es sembrada en extensos terrenos a lo largo y ancho del país. Al respecto, varios defensores del medio ambiente han mostrado cómo, con la tala excesiva de árboles y la sobreexplotación del suelo, los cultivos de palma africana contribuyen al calentamiento global. Por otra parte, la sequía de los suelos alrededor de estos cultivos ha provocado la migración de gran cantidad de familias campesinas en busca de tierras fértiles para cultivar. Frente a esta situación, la ministra de Ambiente y Desarrollo Sostenible ha propuesto prohibir todos los productos que contengan aceite de palma. Por su parte, una de las mayores empresas comercializadoras de crema de chocolate ha propuesto implementar técnicas de cultivo consciente y responsable, con el fin de lograr un cultivo ecológico y sostenible a largo plazo.\n\nDe las siguientes opciones, ¿cuál NO es un posible impacto que tendría la solución propuesta por la ministra de Ambiente y Desarrollo Sostenible?",
+      "imagen": null,
+      "opcion_a": "Afectaría negativamente los ingresos de muchos habitantes de las grandes ciudades.",
+      "opcion_b": "Mejoraría el medio ambiente, pues los suelos serían más fértiles.",
+      "opcion_c": "Afectaría la producción de otros bienes que tienen como ingrediente principal el aceite de palma.",
+      "opcion_d": "Mejoraría las posibilidades de encontrar empleo de quienes habitan las zonas donde se cultiva la palma.",
+      "respuesta_correcta": "X",
+      "materia_id": 4,
+      "creado_por": 1,
+      "creado_en": "2026-06-29 00:00:00",
+      "imagen_opcion_a": null,
+      "imagen_opcion_b": null,
+      "imagen_opcion_c": null,
+      "imagen_opcion_d": null
+    },
+    {
+      "id": 498,
+      "texto": "La teoría de la dependencia argumenta que la pobreza que existe en los países del sur se debe a condiciones históricas que han estructurado el mercado global de tal manera que favorece a los países del norte y mantiene a los países del sur en un estado constante de pobreza. Es así como, desde sus inicios, los países del sur han servido como proveedores de materia prima para los países del norte y, a cambio, han sido receptores de aquellos productos terminados que ya han cumplido su ciclo en los mercados del norte. De esta manera, se crea un vínculo de dependencia, en el que las economías del sur dependen de la voluntad de compra de materias primas por parte de los países del norte.\n\n¿Cuál de las siguientes situaciones se ajusta al modelo teórico descrito?",
+      "imagen": null,
+      "opcion_a": "Un país latinoamericano desarrolla tecnología industrial que le permite procesar materias primas para generar productos con valor añadido, que se venden dentro del mismo país.",
+      "opcion_b": "Una compañía multinacional adquiere, en un país pobre, materias primas a bajo costo, las procesa e incrementa su valor añadido para, luego, vender sus productos en el país pobre.",
+      "opcion_c": "Un país desarrollado de Europa genera riquezas gracias a sus adelantos tecnológicos y, luego, impulsa el avance de la industria de países en desarrollo, porque comparte con ellos esta nueva tecnología.",
+      "opcion_d": "Una organización internacional regula las relaciones comerciales entre países, para asegurarse de que los países que venden materias primas no cobren de más a los países que más las necesitan.",
+      "respuesta_correcta": "X",
+      "materia_id": 4,
+      "creado_por": 1,
+      "creado_en": "2026-06-29 00:00:00",
+      "imagen_opcion_a": null,
+      "imagen_opcion_b": null,
+      "imagen_opcion_c": null,
+      "imagen_opcion_d": null
     }
   ],
   "cuestionarios": [
@@ -680,6 +731,16 @@
       "activo": 1,
       "creado_por": 1,
       "creado_en": "2026-06-28 05:24:56"
+    },
+    {
+      "id": 15,
+      "titulo": "SOCIALES_1 S1-X",
+      "descripcion": "Cuestionario de Ciencias Sociales",
+      "materia_id": 4,
+      "tiempo_limite": 60,
+      "activo": 1,
+      "creado_por": 1,
+      "creado_en": "2026-06-29 00:00:00"
     }
   ],
   "cuestionario_preguntas": [
@@ -898,6 +959,156 @@
       "cuestionario_id": 9,
       "pregunta_id": 52,
       "orden": 36
+    },
+    {
+      "id": 70,
+      "cuestionario_id": 15,
+      "pregunta_id": 496,
+      "orden": 1
+    },
+    {
+      "id": 71,
+      "cuestionario_id": 15,
+      "pregunta_id": 497,
+      "orden": 2
+    },
+    {
+      "id": 72,
+      "cuestionario_id": 15,
+      "pregunta_id": 498,
+      "orden": 3
+    },
+    {
+      "id": 73,
+      "cuestionario_id": 15,
+      "pregunta_id": 499,
+      "orden": 4
+    },
+    {
+      "id": 74,
+      "cuestionario_id": 15,
+      "pregunta_id": 500,
+      "orden": 5
+    },
+    {
+      "id": 75,
+      "cuestionario_id": 15,
+      "pregunta_id": 501,
+      "orden": 6
+    },
+    {
+      "id": 76,
+      "cuestionario_id": 15,
+      "pregunta_id": 502,
+      "orden": 7
+    },
+    {
+      "id": 77,
+      "cuestionario_id": 15,
+      "pregunta_id": 503,
+      "orden": 8
+    },
+    {
+      "id": 78,
+      "cuestionario_id": 15,
+      "pregunta_id": 504,
+      "orden": 9
+    },
+    {
+      "id": 79,
+      "cuestionario_id": 15,
+      "pregunta_id": 505,
+      "orden": 10
+    },
+    {
+      "id": 80,
+      "cuestionario_id": 15,
+      "pregunta_id": 506,
+      "orden": 11
+    },
+    {
+      "id": 81,
+      "cuestionario_id": 15,
+      "pregunta_id": 507,
+      "orden": 12
+    },
+    {
+      "id": 82,
+      "cuestionario_id": 15,
+      "pregunta_id": 508,
+      "orden": 13
+    },
+    {
+      "id": 83,
+      "cuestionario_id": 15,
+      "pregunta_id": 509,
+      "orden": 14
+    },
+    {
+      "id": 84,
+      "cuestionario_id": 15,
+      "pregunta_id": 510,
+      "orden": 15
+    },
+    {
+      "id": 85,
+      "cuestionario_id": 15,
+      "pregunta_id": 511,
+      "orden": 16
+    },
+    {
+      "id": 86,
+      "cuestionario_id": 15,
+      "pregunta_id": 512,
+      "orden": 17
+    },
+    {
+      "id": 87,
+      "cuestionario_id": 15,
+      "pregunta_id": 513,
+      "orden": 18
+    },
+    {
+      "id": 88,
+      "cuestionario_id": 15,
+      "pregunta_id": 514,
+      "orden": 19
+    },
+    {
+      "id": 89,
+      "cuestionario_id": 15,
+      "pregunta_id": 515,
+      "orden": 20
+    },
+    {
+      "id": 90,
+      "cuestionario_id": 15,
+      "pregunta_id": 516,
+      "orden": 21
+    },
+    {
+      "id": 91,
+      "cuestionario_id": 15,
+      "pregunta_id": 517,
+      "orden": 22
+    },
+    {
+      "id": 92,
+      "cuestionario_id": 15,
+      "pregunta_id": 518,
+      "orden": 23
+    },
+    {
+      "id": 93,
+      "cuestionario_id": 15,
+      "pregunta_id": 519,
+      "orden": 24
+    },
+    {
+      "id": 94,
+      "cuestionario_id": 15,
+      "pregunta_id": 520,
+      "orden": 25
     }
   ]
 }

@@ -106,7 +106,8 @@ async function initDB() {
       intento_id INTEGER NOT NULL REFERENCES intentos(id) ON DELETE CASCADE,
       pregunta_id INTEGER NOT NULL REFERENCES preguntas(id),
       respuesta_seleccionada TEXT,
-      es_correcta INTEGER DEFAULT 0
+      es_correcta INTEGER DEFAULT 0,
+      UNIQUE(intento_id, pregunta_id)
     )`);
 
     const m = await db.query('SELECT COUNT(*) as t FROM materias');
@@ -322,7 +323,7 @@ const uploadPregunta = upload.fields([
 
 app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
   try {
-    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, texto_lectura } = req.body;
+    const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, texto_lectura, cuestionario_id } = req.body;
     if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
     let imagen = null, imgA = null, imgB = null, imgC = null, imgD = null;
     if (req.files && req.files['imagen']) imagen = await uploadToCloudinary(req.files['imagen'][0].buffer, 'examen/preguntas');
@@ -332,7 +333,12 @@ app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
     if (req.files && req.files['imagen_opcion_d']) imgD = await uploadToCloudinary(req.files['imagen_opcion_d'][0].buffer, 'examen/opciones');
     const r = await db.query('INSERT INTO preguntas (texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, creado_por, imagen_opcion_a, imagen_opcion_b, imagen_opcion_c, imagen_opcion_d, texto_lectura) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id',
       [texto, imagen, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta.toUpperCase(), materia_id || null, req.session.user.id, imgA, imgB, imgC, imgD, texto_lectura || null]);
-    res.json({ id: r.rows[0].id, message: 'Pregunta creada' });
+    const preguntaId = r.rows[0].id;
+    if (cuestionario_id) {
+      const maxOrd = await db.query('SELECT COALESCE(MAX(orden),0)+1 as next FROM cuestionario_preguntas WHERE cuestionario_id = $1', [cuestionario_id]);
+      await db.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3)', [cuestionario_id, preguntaId, maxOrd.rows[0].next]);
+    }
+    res.json({ id: preguntaId, message: 'Pregunta creada' + (cuestionario_id ? ' y asociada al cuestionario' : '') });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => {
@@ -505,14 +511,24 @@ app.post('/api/intentos/:id/responder', requireAuth, async (req, res) => {
     const p = await db.query('SELECT respuesta_correcta FROM preguntas WHERE id = $1', [pregunta_id]);
     if (p.rows.length === 0) return res.status(404).json({ error: 'Pregunta no encontrada' });
     const esCorrecta = p.rows[0].respuesta_correcta === respuesta.toUpperCase() ? 1 : 0;
-    await db.query('INSERT INTO intento_respuestas (intento_id, pregunta_id, respuesta_seleccionada, es_correcta) VALUES ($1,$2,$3,$4)',
-      [req.params.id, pregunta_id, respuesta.toUpperCase(), esCorrecta]);
+    await db.query(
+      `INSERT INTO intento_respuestas (intento_id, pregunta_id, respuesta_seleccionada, es_correcta)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (intento_id, pregunta_id)
+       DO UPDATE SET respuesta_seleccionada = $3, es_correcta = $4`,
+      [req.params.id, pregunta_id, respuesta.toUpperCase(), esCorrecta]
+    );
     res.json({ es_correcta: esCorrecta, correcta: p.rows[0].respuesta_correcta });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.put('/api/intentos/:id/finalizar', requireAuth, async (req, res) => {
   try {
-    const r = await db.query('SELECT COUNT(*) as correctas FROM intento_respuestas WHERE intento_id = $1 AND es_correcta = 1', [req.params.id]);
+    const r = await db.query(
+      `SELECT COUNT(*) as correctas
+       FROM intento_respuestas
+       WHERE intento_id = $1 AND es_correcta = 1`,
+      [req.params.id]
+    );
     await db.query('UPDATE intentos SET puntuacion = $1, completado = 1, fin_en = CURRENT_TIMESTAMP WHERE id = $2', [parseInt(r.rows[0].correctas), req.params.id]);
     res.json({ puntuacion: parseInt(r.rows[0].correctas) });
   } catch (e) { res.status(500).json({ error: e.message }); }

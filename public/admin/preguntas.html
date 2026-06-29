@@ -54,6 +54,7 @@
 <form id="preguntaForm" enctype="multipart/form-data">
 <input type="hidden" id="editId">
 <div class="form-group"><label>Materia</label><select id="fMateria" required><option value="">Seleccione materia...</option></select></div>
+<div class="form-group"><label>Cuestionario (opcional - para asociar directamente)</label><select id="fCuestionario"><option value="">Sin asociar a cuestionario...</option></select></div>
 <div class="form-group"><label>Texto de lectura (opcional - para preguntas de Lectura Crítica)</label><textarea id="fTextoLectura" rows="4" placeholder="Pegar aquí el texto de lectura que será compartido entre varias preguntas..."></textarea></div>
 <div class="form-group"><label>Texto de la pregunta</label><textarea id="fTexto" rows="3" required></textarea></div>
 <div class="form-group"><label>Imagen (opcional)</label>
@@ -218,9 +219,22 @@ function loadMaterias() {
       sel.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
       filtro.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
     });
+    loadCuestionarios();
     load();
     loadCuestionariosForTextos();
   });
+}
+
+function loadCuestionarios() {
+  fetch('/api/cuestionarios').then(function(r) { return r.json(); }).then(function(d) {
+    var sel = document.getElementById('fCuestionario');
+    if (!sel) return;
+    var cuestionarios = d.cuestionarios || d;
+    if (!Array.isArray(cuestionarios)) return;
+    cuestionarios.forEach(function(c) {
+      sel.innerHTML += '<option value="' + c.id + '">' + (c.titulo || c.nombre || 'Cuestionario ' + c.id) + ' (' + (c.total_preguntas || 0) + ' preguntas)</option>';
+    });
+  }).catch(function(e) { console.error('Error cargando cuestionarios:', e); });
 }
 
 
@@ -287,6 +301,7 @@ function openModal() {
   document.getElementById('preguntaForm').reset();
   document.getElementById('editId').value = '';
   document.getElementById('fTextoLectura').value = '';
+  document.getElementById('fCuestionario').value = '';
   imagenActual = null;
   imagenPegada = null;
   imagenEliminada = false;
@@ -352,8 +367,9 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   fd.append('opcion_c', document.getElementById('fOpcC').value);
   fd.append('opcion_d', document.getElementById('fOpcD').value);
   fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
-  fd.append('materia_id', document.getElementById('fMateria').value);
+  fd.append('materia_id', document.getElementById('fMateria').value || '1');
   fd.append('texto_lectura', document.getElementById('fTextoLectura').value);
+  fd.append('cuestionario_id', document.getElementById('fCuestionario').value || '');
   // Solo enviar imagen si se selecciono una nueva imagen o si es edicion con imagen existente
   if (imagenNuevaSeleccionada && fi.files[0]) {
     fd.append('imagen', fi.files[0]);
@@ -378,8 +394,14 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   });
 
   var id = document.getElementById('editId').value;
-  if (editing) { await fetch('/api/preguntas/' + id, { method: 'PUT', body: fd }); }
-  else { await fetch('/api/preguntas', { method: 'POST', body: fd }); }
+  var resp;
+  if (editing) { resp = await fetch('/api/preguntas/' + id, { method: 'PUT', body: fd }); }
+  else { resp = await fetch('/api/preguntas', { method: 'POST', body: fd }); }
+  var result = await resp.json();
+  if (!resp.ok) {
+    alert('Error al guardar: ' + (result.error || 'Error desconocido'));
+    return;
+  }
   closeModal();
   load();
 });
