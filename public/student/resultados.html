@@ -113,12 +113,21 @@ function loadResultado(id) {
       var cls = r.es_correcta ? 'result-correct' : 'result-incorrect';
       var icon = r.es_correcta ? '&#10003;' : '&#10007;';
       var iconColor = r.es_correcta ? '#16a34a' : '#dc2626';
-      var dinoReaction = r.es_correcta ? ' &#129430;' : ' &#128542;';
+      
+      // Dinosaur reactions based on correctness
+      var dinoHappy = ['&#129430;', '&#129431;', '&#128038;', '&#129409;'];
+      var dinoSad = ['&#128036;', '&#128037;', '&#129430;', '&#129431;'];
+      var dinoReaction;
+      if (r.es_correcta) {
+        dinoReaction = ' ' + dinoHappy[i % dinoHappy.length];
+      } else {
+        dinoReaction = ' ' + dinoSad[i % dinoSad.length];
+      }
 
       html += '<div class="result-card ' + cls + '">';
       html += '<div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">';
       html += '<h4 style="flex:1">' + (i + 1) + '. ' + r.texto + '</h4>';
-      html += '<span style="font-size:24px;color:' + iconColor + ';margin-left:12px">' + icon + dinoReaction + '</span>';
+      html += '<span style="font-size:28px;margin-left:12px">' + icon + dinoReaction + '</span>';
       html += '</div>';
 
       if (r.imagen) html += '<img src="' + r.imagen + '" style="max-width:100%;border-radius:8px;margin-bottom:12px">';
