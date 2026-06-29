@@ -26,9 +26,10 @@ Plataforma de examenes/cuestionarios ICFES para estudiantes colombianos.
 1. Pedir al usuario el bloque de preguntas en texto
 2. Insertar en PostgreSQL usando la URL de DATABASE_URL
 3. Asociar al cuestionario correspondiente
-4. Actualizar SESION_TRABAJO.md con los nuevos IDs y textos
-5. **SIEMPRE commitear y pushear a GitHub** para que Render haga auto-deploy
-6. Verificar que el deploy fue exitoso
+4. **SIEMPRE incluir materia_id** al INSERTAR preguntas (1=Matemáticas, 2=Lectura Crítica)
+5. Actualizar SESION_TRABAJO.md con los nuevos IDs y textos
+6. **SIEMPRE commitear y pushear a GitHub** para que Render haga auto-deploy
+7. Verificar que el deploy fue exitoso
 
 ## Archivos clave
 - `server.js` - Servidor principal (API, rutas, uploads)
