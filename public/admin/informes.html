@@ -106,6 +106,7 @@ function verIntentos(id, nombre) {
       html += '<div style="display:flex;gap:24px;align-items:center;margin-bottom:12px">';
       html += '<div><span style="font-size:24px;font-weight:700;color:#16a34a">' + it.correctas + '</span> <span style="color:#64748b;font-size:13px">Correctas</span></div>';
       html += '<div><span style="font-size:24px;font-weight:700;color:#dc2626">' + it.incorrectas + '</span> <span style="color:#64748b;font-size:13px">Incorrectas</span></div>';
+      html += '<div><span style="font-size:24px;font-weight:700;color:#f59e0b">' + (it.total_preguntas - it.correctas - it.incorrectas) + '</span> <span style="color:#64748b;font-size:13px">Pendientes</span></div>';
       html += '<div><span style="font-size:24px;font-weight:700;color:#2563eb">' + it.total_preguntas + '</span> <span style="color:#64748b;font-size:13px">Total</span></div>';
       html += '<div><span class="badge ' + (it.completado ? 'badge-active' : 'badge-inactive') + '">' + (it.completado ? 'Completado' : 'Incompleto') + '</span></div>';
       html += '</div>';
@@ -137,11 +138,16 @@ function verDetalle(id, titulo) {
     html += '<p style="color:#94a3b8;font-size:12px">' + it.inicio_en + (it.fin_en ? ' - ' + it.fin_en : '') + '</p>';
     html += '</div>';
 
+    var numCorrectas = d.respuestas.filter(function(r) { return r.es_correcta === 1; }).length;
+    var numIncorrectas = d.respuestas.filter(function(r) { return r.es_correcta === 0; }).length;
+    var numPendientes = it.total_preguntas - numCorrectas - numIncorrectas;
+
     html += '<div style="background:#fff;border-radius:12px;padding:20px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)">';
     html += '<h3 style="margin-bottom:12px">Resumen</h3>';
     html += '<div style="display:flex;gap:24px;flex-wrap:wrap">';
-    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#16a34a">' + it.puntuacion + '</div><div style="color:#64748b;font-size:13px">Correctas</div></div>';
-    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#dc2626">' + (it.total_preguntas - it.puntuacion) + '</div><div style="color:#64748b;font-size:13px">Incorrectas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#16a34a">' + numCorrectas + '</div><div style="color:#64748b;font-size:13px">Correctas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#dc2626">' + numIncorrectas + '</div><div style="color:#64748b;font-size:13px">Incorrectas</div></div>';
+    html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#f59e0b">' + numPendientes + '</div><div style="color:#64748b;font-size:13px">Pendientes</div></div>';
     html += '<div style="text-align:center"><div style="font-size:32px;font-weight:700;color:#2563eb">' + it.total_preguntas + '</div><div style="color:#64748b;font-size:13px">Total</div></div>';
     html += '</div></div>';
 
