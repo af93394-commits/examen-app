@@ -217,11 +217,12 @@ function selectOption(pid, opt, el) {
     if (isCorrect) {
       correctCount++;
       el.classList.add('correct-flash');
-      showDinoCelebration(el);
+      showDinoHappy(el);
       showFloatingScore('+1', '#16a34a', el);
     } else {
       incorrectCount++;
       el.classList.add('incorrect-flash');
+      showDinoSad(el);
       showFloatingScore('X', '#dc2626', el);
     }
     updateStats();
@@ -254,18 +255,28 @@ function showFloatingScore(text, color, targetEl) {
   setTimeout(function() { div.remove(); }, 1000);
 }
 
-function showDinoCelebration(targetEl) {
-  if (Math.random() > 0.3) return; // 30% chance
-  
-  var dinos = ['&#129430;', '&#129431;', '&#128038;', '&#128036;', '&#128037;', '&#129409;'];
+function showDinoHappy(targetEl) {
+  var dinos = ['&#129430;', '&#129431;', '&#128038;', '&#129409;'];
   var dino = dinos[Math.floor(Math.random() * dinos.length)];
   
   var rect = targetEl.getBoundingClientRect();
   var div = document.createElement('div');
   div.innerHTML = dino;
-  div.style.cssText = 'position:fixed;font-size:32px;pointer-events:none;z-index:9999;animation:dinoBounce 0.8s ease-out forwards;left:' + (rect.right + 10) + 'px;top:' + (rect.top - 10) + 'px';
+  div.style.cssText = 'position:fixed;font-size:36px;pointer-events:none;z-index:9999;animation:dinoBounce 0.8s ease-out forwards;left:' + (rect.right + 10) + 'px;top:' + (rect.top - 10) + 'px';
   document.body.appendChild(div);
   setTimeout(function() { div.remove(); }, 800);
+}
+
+function showDinoSad(targetEl) {
+  var dinos = ['&#128036;', '&#128037;', '&#129430;', '&#129431;'];
+  var dino = dinos[Math.floor(Math.random() * dinos.length)];
+  
+  var rect = targetEl.getBoundingClientRect();
+  var div = document.createElement('div');
+  div.innerHTML = dino;
+  div.style.cssText = 'position:fixed;font-size:36px;pointer-events:none;z-index:9999;animation:incorrectShake 0.5s ease-out forwards;left:' + (rect.right + 10) + 'px;top:' + (rect.top - 10) + 'px';
+  document.body.appendChild(div);
+  setTimeout(function() { div.remove(); }, 500);
 }
 
 function finalizar() {
