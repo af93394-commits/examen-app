@@ -279,6 +279,8 @@ INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VAL
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (33, 16, 576, 6) ON CONFLICT DO NOTHING;
 INSERT INTO cuestionario_preguntas (id, cuestionario_id, pregunta_id, orden) VALUES (34, 16, 577, 7) ON CONFLICT DO NOTHING;
 
+INSERT INTO cuestionarios (id, titulo, descripcion, materia_id, tiempo_limite, activo, creado_por) VALUES (19, 'NATURALES 1_ X-Y', 'Cuestionario de Ciencias Naturales', 3, 60, 1, 1) ON CONFLICT DO NOTHING;
+
 SELECT setval('materias_id_seq', (SELECT COALESCE(MAX(id),1) FROM materias));
 SELECT setval('usuarios_id_seq', (SELECT COALESCE(MAX(id),1) FROM usuarios));
 SELECT setval('preguntas_id_seq', (SELECT COALESCE(MAX(id),1) FROM preguntas));
