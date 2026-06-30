@@ -78,6 +78,9 @@
 .quiz-stats .correct { color: #16a34a; }
 .quiz-stats .incorrect { color: #dc2626; }
 .quiz-stats .pending { color: #94a3b8; }
+.option.locked { opacity: 0.7; cursor: default; pointer-events: none; }
+.option.locked.selected-correct { border-color: #16a34a; background: #dcfce7; opacity: 1; }
+.option.locked.selected-incorrect { border-color: #dc2626; background: #fee2e2; opacity: 1; }
 </style>
 </head>
 <body>
@@ -107,7 +110,7 @@ var params = new URLSearchParams(window.location.search);
 var intentoId = params.get('intento');
 var totalPreg = parseInt(params.get('total'));
 var cuestionarioId = params.get('cuestionario');
-var preguntas = [], currentIndex = 0, respuestas = {}, timerSeconds = 0, timerInterval, correctCount = 0, incorrectCount = 0;
+var preguntas = [], currentIndex = 0, respuestas = {}, respondidas = new Set(), timerSeconds = 0, timerInterval, correctCount = 0, incorrectCount = 0;
 
 if (!intentoId) { window.location.href = '/student/dashboard.html'; }
 
@@ -189,9 +192,14 @@ function renderQuestion(p, idx) {
     var val = p['opcion_' + opt.toLowerCase()];
     var imgKey = 'imagen_opcion_' + opt.toLowerCase();
     var imgVal = p[imgKey];
+    var isRespondida = respondidas.has(p.id);
     var sel = selected === opt ? ' selected' : '';
-    html += '<div class="option' + sel + '" onclick="selectOption(' + p.id + ',\'' + opt + '\',this)">';
-    html += '<input type="radio" name="p' + p.id + '" value="' + opt + '"' + (selected === opt ? ' checked' : '') + '>';
+    var lockClass = isRespondida ? ' locked' : '';
+    var correctClass = isRespondida && opt === p.respuesta_correcta ? ' selected-correct' : '';
+    var incorrectClass = isRespondida && selected === opt && opt !== p.respuesta_correcta ? ' selected-incorrect' : '';
+    var clickAttr = isRespondida ? '' : ' onclick="selectOption(' + p.id + ',\'' + opt + '\',this)"';
+    html += '<div class="option' + sel + lockClass + correctClass + incorrectClass + '"' + clickAttr + '>';
+    html += '<input type="radio" name="p' + p.id + '" value="' + opt + '"' + (selected === opt ? ' checked' : '') + (isRespondida ? ' disabled' : '') + '>';
     html += '<strong>' + opt + ')</strong> ';
     if (imgVal) html += '<img src="' + imgVal + '" style="max-width:200px;max-height:100px;border-radius:4px">';
     if (val) html += '<span>' + val + '</span>';
@@ -203,52 +211,41 @@ function renderQuestion(p, idx) {
 }
 
 function selectOption(pid, opt, el) {
-  var prevOpt = respuestas[pid];
-  var alreadyAnswered = prevOpt !== undefined;
+  if (respondidas.has(pid)) return;
+
   respuestas[pid] = opt;
-  el.parentElement.querySelectorAll('.option').forEach(function(o) { o.classList.remove('selected'); });
+  respondidas.add(pid);
+
+  el.parentElement.querySelectorAll('.option').forEach(function(o) {
+    o.classList.add('locked');
+    o.onclick = null;
+  });
+
   el.classList.add('selected');
-  
-  // Find the question
+
   var p = preguntas.find(function(q) { return q.id === pid; });
   if (p) {
-    // Check if correct
     var isCorrect = opt === p.respuesta_correcta;
-    
-    // Update counters
-    if (!alreadyAnswered) {
-      // First time answering
-      if (isCorrect) {
-        correctCount++;
-        el.classList.add('correct-flash');
-        showDinoHappy(el);
-        showFloatingScore('+1', '#16a34a', el);
-      } else {
-        incorrectCount++;
-        el.classList.add('incorrect-flash');
-        showDinoSad(el);
-        showFloatingScore('X', '#dc2626', el);
-      }
+    if (isCorrect) {
+      correctCount++;
+      el.classList.add('correct-flash', 'selected-correct');
+      showDinoHappy(el);
+      showFloatingScore('+1', '#16a34a', el);
     } else {
-      // Answer changed - adjust counters
-      var wasCorrect = prevOpt === p.respuesta_correcta;
-      if (wasCorrect && !isCorrect) {
-        correctCount--;
-        incorrectCount++;
-        el.classList.add('incorrect-flash');
-        showDinoSad(el);
-        showFloatingScore('X', '#dc2626', el);
-      } else if (!wasCorrect && isCorrect) {
-        incorrectCount--;
-        correctCount++;
-        el.classList.add('correct-flash');
-        showDinoHappy(el);
-        showFloatingScore('+1', '#16a34a', el);
-      }
+      incorrectCount++;
+      el.classList.add('incorrect-flash', 'selected-incorrect');
+      showDinoSad(el);
+      showFloatingScore('X', '#dc2626', el);
+      el.parentElement.querySelectorAll('.option').forEach(function(o) {
+        var radio = o.querySelector('input[type=radio]');
+        if (radio && radio.value === p.respuesta_correcta) {
+          o.classList.add('selected-correct');
+        }
+      });
     }
     updateStats();
   }
-  
+
   fetch('/api/intentos/' + intentoId + '/responder', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
