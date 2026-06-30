@@ -303,7 +303,26 @@ function showDinoSad(targetEl) {
 function finalizar() {
   if (!confirm('¿Estás seguro de finalizar el cuestionario?')) return;
   fetch('/api/intentos/' + intentoId + '/finalizar', { method: 'PUT' })
-    .then(function() { window.location.href = '/student/resultados.html?intento=' + intentoId; });
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+      if (d.nuevasInsignias && d.nuevasInsignias.length > 0) {
+        d.nuevasInsignias.forEach(function(badge, i) {
+          setTimeout(function() {
+            var toast = document.createElement('div');
+            toast.className = 'toast toast-success';
+            toast.innerHTML = '&#127942; ¡Nueva insignia: ' + badge.nombre + '!';
+            toast.style.cssText = 'position:fixed;top:' + (20 + i * 60) + 'px;right:20px;padding:14px 20px;border-radius:8px;color:#fff;font-weight:500;z-index:2000;background:#16a34a;animation:slideIn .3s';
+            document.body.appendChild(toast);
+            setTimeout(function() { toast.remove(); }, 4000);
+          }, i * 1000);
+        });
+        setTimeout(function() {
+          window.location.href = '/student/resultados.html?intento=' + intentoId;
+        }, d.nuevasInsignias.length * 1000 + 1500);
+      } else {
+        window.location.href = '/student/resultados.html?intento=' + intentoId;
+      }
+    });
 }
 </script>
 </body>

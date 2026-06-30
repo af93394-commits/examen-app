@@ -40,6 +40,8 @@ const db = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
+const badgesEngine = require('./badges')(db);
+
 async function initDB() {
   try {
     await db.query(`CREATE TABLE IF NOT EXISTS materias (
@@ -109,6 +111,73 @@ async function initDB() {
       es_correcta INTEGER DEFAULT 0,
       UNIQUE(intento_id, pregunta_id)
     )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS badges (
+      id SERIAL PRIMARY KEY,
+      clave TEXT UNIQUE NOT NULL,
+      nombre TEXT NOT NULL,
+      descripcion TEXT NOT NULL,
+      icono_svg TEXT,
+      categoria TEXT DEFAULT 'general',
+      rareza TEXT DEFAULT 'comun',
+      puntos INTEGER DEFAULT 10,
+      orden_display INTEGER DEFAULT 0,
+      activo INTEGER DEFAULT 1,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS student_badges (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      badge_id INTEGER NOT NULL REFERENCES badges(id) ON DELETE CASCADE,
+      intento_id INTEGER REFERENCES intentos(id) ON DELETE SET NULL,
+      otorgado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(usuario_id, badge_id)
+    )`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sb_usuario ON student_badges(usuario_id)`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_sb_usuario_badge ON student_badges(usuario_id, badge_id)`);
+
+    const badgeCount = await db.query('SELECT COUNT(*) as t FROM badges');
+    if (parseInt(badgeCount.rows[0].t) === 0) {
+      const badges = [
+        ['STREAK_7_DAYS','Primera Semana','7 días consecutivos de estudio','racha','comun',15,1],
+        ['STREAK_15_DAYS','Racha de Oro','15 días consecutivos de estudio','racha','raro',30,2],
+        ['STREAK_20_DAYS','Imparable','20 días consecutivos de estudio','racha','epico',50,3],
+        ['FIRST_QUIZ_COMPLETED','Primera Vez','Completa tu primer cuestionario','volumen','comun',10,10],
+        ['TOTAL_QUIZZES_10','Diez Cuestionarios','Completa 10 cuestionarios','volumen','comun',15,11],
+        ['TOTAL_QUIZZES_30','Treinta Cuestionarios','Completa 30 cuestionarios','volumen','raro',25,12],
+        ['TOTAL_QUIZZES_100','Cien Cuestionarios','Completa 100 cuestionarios','volumen','legendario',100,13],
+        ['FIVE_QUIZZES_SAME_DAY','Maratón de un Día','Completa 5 cuestionarios en un solo día','volumen','raro',30,14],
+        ['PERFECT_SCORE_SINGLE_ATTEMPT','Perfecto a la Primera','100% en tu primer intento','mastery','raro',25,20],
+        ['CATEGORY_MASTERY_100PCT','Maestro de Categoría','100% en una materia','mastery','raro',30,21],
+        ['FIVE_CATEGORIES_MASTERED','Polímata','100% en 5 materias diferentes','mastery','epico',60,22],
+        ['FIVE_PERFECT_SCORES','Cinco Perfectos','100% en 5 cuestionarios','mastery','epico',50,23],
+        ['50_CONSECUTIVE_CORRECT','Precisión Quirúrgica','50 respuestas correctas seguidas','mastery','legendario',80,24],
+        ['ALL_SUBJECTS_COMPLETED','Explorador Total','Completa cuestionarios de todas las materias','mastery','raro',35,25],
+        ['ALL_CATEGORIES_ATTEMPTED','Curioso','Intenta cuestionarios de todas las materias','mastery','comun',20,26],
+        ['QUIZ_BEFORE_8AM','Madrugador','Inicia un cuestionario antes de las 8am','horario','comun',15,30],
+        ['QUIZ_BEFORE_6AM','Madrugador Extremo','Inicia un cuestionario antes de las 6am','horario','raro',25,31],
+        ['QUIZ_AFTER_10PM','Noctambulo','Inicia un cuestionario después de las 10pm','horario','comun',15,32],
+        ['QUIZ_AFTER_MIDNIGHT','Trasnochador','Inicia un cuestionario después de medianoche','horario','raro',25,33],
+        ['ACTIVE_WEEKEND','Fin de Semana Activo','Estudia sábado y domingo','horario','comun',15,34],
+        ['ACTIVE_EVERY_DAY_MONTH','Constancia Mensual','Activo todos los días del mes','horario','epico',50,35],
+        ['FIRST_QUIZ_OF_YEAR','Primer Quiz del Año','Primer cuestionario del año','horario','raro',20,36],
+        ['COMPLETED_NO_HINTS','Sin Ayudas','Completa sin usar pistas','horario','comun',10,37],
+        ['60_DAYS_SINCE_REGISTRATION_ACTIVE','Veterano','60 días desde tu registro activo','horario','raro',30,38],
+        ['RETURN_AFTER_30_DAYS_INACTIVE','De Vuelta','Regresa tras 30 días inactivo','horario','raro',25,39],
+        ['TIME_UNDER_50PCT_LIMIT','Velocista','Termina en menos del 50% del tiempo','velocidad','comun',15,40],
+        ['PERFECT_UNDER_HALF_TIME','Velocista Perfecto','100% en menos del 50% del tiempo','velocidad','epico',50,41],
+        ['FULL_TIME_USED_AND_PASSED','Límite al Máximo','Usa todo el tiempo y apruebas','velocidad','raro',20,42],
+        ['IMPROVEMENT_20PCT_AFTER_FAIL','Mejora Constante','Mejora 20% tras reprobado','especial','raro',25,50],
+        ['RETRY_AFTER_3_FAILS','Nunca Se Rinde','Reintenta tras 3 intentos fallidos','especial','raro',25,51],
+        ['RETAKE_AND_IMPROVE','Superación','Repasa y mejora tu puntuación','especial','comun',15,52],
+        ['HARD_QUIZ_PASSED_AFTER_3_ATTEMPTS','Conquistador','Aprueba tras 3+ intentos','especial','epico',40,53],
+        ['BADGES_EARNED_10','Coleccionista','Obtiene 10 insignias','especial','raro',20,54],
+        ['BADGES_EARNED_20','Maestro Coleccionista','Obtiene 20 insignias','especial','epico',40,55]
+      ];
+      for (const b of badges) {
+        await db.query('INSERT INTO badges (clave, nombre, descripcion, categoria, rareza, puntos, orden_display) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING', b);
+      }
+      console.log('35 insignias insertadas');
+    }
 
     const m = await db.query('SELECT COUNT(*) as t FROM materias');
     if (parseInt(m.rows[0].t) === 0) {
@@ -530,7 +599,8 @@ app.put('/api/intentos/:id/finalizar', requireAuth, async (req, res) => {
       [req.params.id]
     );
     await db.query('UPDATE intentos SET puntuacion = $1, completado = 1, fin_en = CURRENT_TIMESTAMP WHERE id = $2', [parseInt(r.rows[0].correctas), req.params.id]);
-    res.json({ puntuacion: parseInt(r.rows[0].correctas) });
+    const nuevasInsignias = await badgesEngine.evaluarInsignias(req.session.user.id, parseInt(req.params.id));
+    res.json({ puntuacion: parseInt(r.rows[0].correctas), nuevasInsignias });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/intentos/:id/resultados', requireAuth, async (req, res) => {
@@ -664,6 +734,48 @@ app.get('/api/stats', requireAdmin, async (req, res) => {
     const int = await db.query('SELECT COUNT(*) as total FROM intentos WHERE completado=1');
     stats.totalIntentos = parseInt(int.rows[0].total);
     res.json(stats);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============ INSIGNIAS ============
+app.get('/api/insignias', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const badgesRes = await db.query('SELECT * FROM badges WHERE activo = 1 ORDER BY categoria, orden_display');
+    const earnedRes = await db.query(`
+      SELECT sb.badge_id, sb.otorgado_en FROM student_badges sb
+      WHERE sb.usuario_id = $1
+    `, [userId]);
+    const earnedMap = {};
+    earnedRes.rows.forEach(r => { earnedMap[r.badge_id] = r.otorgado_en; });
+    const badges = badgesRes.rows.map(b => ({
+      ...b, otorgada: !!earnedMap[b.id], otorgado_en: earnedMap[b.id] || null
+    }));
+    res.json({ badges });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/insignias/mis', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const r = await db.query(`
+      SELECT b.*, sb.otorgado_en FROM student_badges sb
+      JOIN badges b ON sb.badge_id = b.id
+      WHERE sb.usuario_id = $1 ORDER BY sb.otorgado_en DESC
+    `, [userId]);
+    const totalBadges = await db.query('SELECT COUNT(*) as t FROM badges WHERE activo=1');
+    const totalPuntos = r.rows.reduce((sum, b) => sum + (b.puntos || 0), 0);
+    res.json({ insignias: r.rows, totalObtenidas: r.rows.length, totalDisponibles: parseInt(totalBadges.rows[0].t), totalPuntos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/insignias/progreso', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const completados = await db.query('SELECT COUNT(*) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [userId]);
+    const streak = await badgesEngine.calcularRacha(userId);
+    const totalMaterias = await db.query('SELECT COUNT(*) as t FROM materias WHERE activo=1');
+    res.json({ completados: parseInt(completados.rows[0].t), rachaActual: streak, totalMaterias: parseInt(totalMaterias.rows[0].t) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
