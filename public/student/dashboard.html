@@ -5,13 +5,21 @@
 <title>Mi Dashboard</title>
 <link rel="stylesheet" href="/css/styles.css">
 <style>
-.pending-list{list-style:none;padding:0}
-.pending-item{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#f8fafc;border-radius:8px;margin-bottom:8px;border:1px solid #e2e8f0;transition:all .2s}
-.pending-item:hover{border-color:#2563eb;background:#eff6ff}
-.pending-item .info{flex:1}
-.pending-item .title{font-weight:600;font-size:14px;color:#1e293b}
-.pending-item .meta{font-size:12px;color:#64748b;margin-top:2px}
-.pending-item .start-btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600}
+.materia-section{margin-bottom:28px}
+.materia-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0}
+.materia-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.materia-header h2{font-size:18px;color:#1e293b;margin:0}
+.materia-header .materia-count{font-size:13px;color:#64748b;font-weight:400;margin-left:auto}
+.cue-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.cue-card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #f1f5f9;transition:all .2s;position:relative;overflow:hidden}
+.cue-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-2px)}
+.cue-card .cue-title{font-size:15px;font-weight:600;color:#1e293b;margin-bottom:8px;line-height:1.4}
+.cue-card .cue-meta{display:flex;gap:12px;font-size:12px;color:#64748b;margin-bottom:12px}
+.cue-card .cue-meta span{display:flex;align-items:center;gap:4px}
+.cue-card .cue-actions{display:flex;justify-content:space-between;align-items:center}
+.cue-badge{font-size:11px;padding:3px 8px;border-radius:12px;font-weight:600}
+.cue-badge.pending{background:#fef3c7;color:#b45309}
+.cue-badge.done{background:#dcfce7;color:#16a34a}
 </style>
 </head>
 <body>
@@ -27,7 +35,6 @@
 <div class="main-content">
 <div class="page-header"><h1>Bienvenido, <span id="nombreEst"></span></h1></div>
 
-<!-- STATS PRINCIPALES -->
 <div class="stats-grid">
 <div class="stat-card"><div class="stat-icon green">&#128218;</div><h3 id="sDisponibles">0</h3><p>Cuestionarios Disponibles</p></div>
 <div class="stat-card"><div class="stat-icon blue">&#10003;</div><h3 id="sRealizados">0</h3><p>Cuestionarios Completados</p></div>
@@ -35,52 +42,96 @@
 <div class="stat-card"><div class="stat-icon red">&#9888;</div><h3 id="sPendientes">0</h3><p>Pendientes</p></div>
 </div>
 
-<!-- CUESTIONARIOS PENDIENTES -->
-<div class="card">
-<div class="card-header"><h3>&#128203; Cuestionarios Pendientes</h3><span class="badge badge-admin" id="badgePend">0</span></div>
-<ul class="pending-list" id="pendientesList"></ul>
-</div>
+<div id="materiasContainer"></div>
 
 </div>
 <script>
+var materiasColores={'Matematicas':'#2563eb','Lectura Critica':'#16a34a','Ciencias Naturales':'#f59e0b','Ciencias Sociales':'#dc2626','Ingles':'#8b5cf6'};
+var defaultColor='#64748b';
+var intentadosSet=new Set();
+
 fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
   document.getElementById('userName').textContent=d.user.nombre;
   document.getElementById('nombreEst').textContent=d.user.nombre;
   if(d.user.rol!=='estudiante')window.location.href='/admin/dashboard.html';
-  loadStats();
-  loadPendientes();
+  loadAll();
 }).catch(function(){window.location.href='/'});
 
-function loadStats(){
-  fetch('/api/estudiante/progreso').then(function(r){return r.json()}).then(function(d){
-    document.getElementById('sDisponibles').textContent=d.totalCuestionarios;
-    document.getElementById('sRealizados').textContent=d.completados;
-    document.getElementById('sPromedio').textContent=d.promedioGeneral+'%';
-    document.getElementById('sPendientes').textContent='--';
+function loadAll(){
+  Promise.all([
+    fetch('/api/estudiante/progreso').then(function(r){return r.json()}),
+    fetch('/api/estudiante/pendientes').then(function(r){return r.json()})
+  ]).then(function(results){
+    var progreso=results[0];
+    var pendientes=results[1];
+    document.getElementById('sDisponibles').textContent=progreso.totalCuestionarios;
+    document.getElementById('sRealizados').textContent=progreso.completados;
+    document.getElementById('sPromedio').textContent=progreso.promedioGeneral+'%';
+    document.getElementById('sPendientes').textContent=pendientes.totalPendientes;
+    pendientes.pendientes.forEach(function(p){intentadosSet.add(p.id)});
+    renderMaterias(progreso.porMateria);
   });
 }
 
-function loadPendientes(){
-  fetch('/api/estudiante/pendientes').then(function(r){return r.json()}).then(function(d){
-    document.getElementById('sPendientes').textContent=d.totalPendientes;
-    document.getElementById('badgePend').textContent=d.totalPendientes+' pendientes';
-    var list=document.getElementById('pendientesList');
-    list.innerHTML='';
-    if(d.pendientes.length===0){
-      list.innerHTML='<div class="empty-state" style="padding:24px"><div class="icon">&#127881;</div><p>No tienes cuestionarios pendientes, muy bien!</p></div>';
+function renderMaterias(materias){
+  var container=document.getElementById('materiasContainer');
+  container.innerHTML='';
+  var materiasConCues=materias.filter(function(m){return m.total>0});
+  if(materiasConCues.length===0){
+    container.innerHTML='<div class="card empty-state"><div class="icon">&#128221;</div><p>No hay cuestionarios publicados aún</p></div>';
+    return;
+  }
+  materiasConCues.forEach(function(m){
+    var color=materiasColores[m.nombre]||defaultColor;
+    var pct=m.total>0?Math.round(m.completados*100/m.total):0;
+    var section=document.createElement('div');
+    section.className='materia-section';
+    var html='<div class="materia-header">';
+    html+='<div class="materia-icon" style="background:'+color+'20;color:'+color+'">&#128218;</div>';
+    html+='<div><h2>'+m.nombre+'</h2></div>';
+    html+='<span class="materia-count">'+m.completados+'/'+m.total+' completados</span>';
+    html+='</div>';
+    html+='<div class="cue-grid" id="grid-'+m.id+'"></div>';
+    section.innerHTML=html;
+    container.appendChild(section);
+    loadCuestionariosMateria(m.id, color);
+  });
+}
+
+function loadCuestionariosMateria(materiaId, color){
+  fetch('/api/cuestionarios?materia_id='+materiaId).then(function(r){return r.json()}).then(function(d){
+    var grid=document.getElementById('grid-'+materiaId);
+    if(!grid)return;
+    if(d.cuestionarios.length===0){
+      grid.innerHTML='<p style="color:#94a3b8;font-size:13px">No hay cuestionarios disponibles</p>';
       return;
     }
-    d.pendientes.forEach(function(p){
-      var li=document.createElement('li');
-      li.className='pending-item';
-      li.innerHTML='<div class="info"><div class="title">'+p.titulo+'</div><div class="meta">'+(p.materia_nombre||'Sin materia')+' &bull; '+p.total_preguntas+' preguntas &bull; '+p.tiempo_limite+' min</div></div><button class="btn btn-primary start-btn" onclick="iniciarCuestionario('+p.id+',\''+p.titulo.replace(/'/g,"\\'")+'\')">Iniciar</button>';
-      list.appendChild(li);
+    d.cuestionarios.forEach(function(c){
+      var esPendiente=!intentadosSet.has(c.id);
+      var card=document.createElement('div');
+      card.className='cue-card';
+      var html='<div class="cue-title">'+c.titulo+'</div>';
+      html+='<div class="cue-meta">';
+      html+='<span>&#128196; '+(c.total_preguntas||0)+' preguntas</span>';
+      html+='<span>&#9201; '+c.tiempo_limite+' min</span>';
+      html+='</div>';
+      html+='<div class="cue-actions">';
+      if(esPendiente){
+        html+='<span class="cue-badge pending">Pendiente</span>';
+        html+='<button class="btn btn-primary btn-sm" onclick="iniciarCuestionario('+c.id+',\''+c.titulo.replace(/'/g,"\\'")+'\')">Iniciar</button>';
+      }else{
+        html+='<span class="cue-badge done">&#10003; Completado</span>';
+        html+='<button class="btn btn-secondary btn-sm" onclick="iniciarCuestionario('+c.id+',\''+c.titulo.replace(/'/g,"\\'")+'\')">Repasar</button>';
+      }
+      html+='</div>';
+      card.innerHTML=html;
+      grid.appendChild(card);
     });
   });
 }
 
 function iniciarCuestionario(id,titulo){
-  if(!confirm('Iniciar cuestionario "'+titulo+'"\nEsta seguro?'))return;
+  if(!confirm('Iniciar cuestionario "'+titulo+'"\n¿Estás seguro?'))return;
   fetch('/api/intentos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cuestionario_id:id})}).then(function(r){return r.json()}).then(function(d){
     window.location.href='/student/cuestionario.html?intento='+d.id+'&total='+d.total+'&cuestionario='+id;
   });
