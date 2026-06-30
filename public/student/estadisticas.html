@@ -6,6 +6,21 @@
 <link rel="stylesheet" href="/css/styles.css">
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
+.progress-ring{position:relative;width:140px;height:140px;margin:0 auto}
+.progress-ring svg{transform:rotate(-90deg)}
+.progress-ring circle{fill:none;stroke-width:10;stroke-linecap:round;transition:stroke-dashoffset .8s ease}
+.progress-ring .track{stroke:#e2e8f0}
+.progress-ring .fill{stroke:#2563eb}
+.progress-ring .center-text{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.progress-ring .pct{font-size:32px;font-weight:700;color:#1e293b}
+.progress-ring .sub{font-size:12px;color:#64748b}
+.subject-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:24px}
+.subject-card{background:#fff;border-radius:12px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.1);border-left:4px solid #2563eb}
+.subject-card h4{font-size:14px;margin-bottom:8px;color:#1e293b}
+.subject-card .mini-bar{height:8px;background:#e2e8f0;border-radius:4px;margin:8px 0;overflow:hidden}
+.subject-card .mini-bar-fill{height:100%;border-radius:4px;transition:width .6s ease}
+.subject-card .mini-stats{display:flex;justify-content:space-between;font-size:12px;color:#64748b}
+.subject-card .mini-pct{font-size:22px;font-weight:700}
 .chart-section{background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:20px}
 .chart-section h3{font-size:18px;margin-bottom:20px;color:#1e293b}
 .chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
@@ -27,8 +42,37 @@
 <div class="main-content">
 <div class="page-header"><h1>&#128202; Mis Estadísticas</h1></div>
 
-<div id="statsContent">
-<div class="no-data"><div class="icon">&#128202;</div><p>Cargando estadísticas...</p></div>
+<!-- PROGRESO GENERAL -->
+<div class="card" style="text-align:center;padding:32px">
+<div style="display:flex;align-items:center;justify-content:center;gap:40px;flex-wrap:wrap">
+<div class="progress-ring">
+<svg width="140" height="140"><circle class="track" cx="70" cy="70" r="60"/><circle class="fill" id="progressCircle" cx="70" cy="70" r="60" stroke-dasharray="377" stroke-dashoffset="377"/></svg>
+<div class="center-text"><span class="pct" id="progressPct">0%</span><span class="sub">Progreso</span></div>
+</div>
+<div style="text-align:left">
+<h2 style="font-size:22px;margin-bottom:8px">Tu Progreso General</h2>
+<p style="color:#64748b;font-size:15px"><span id="progressComp">0</span> de <span id="progressTotal">0</span> cuestionarios completados</p>
+<p style="color:#64748b;font-size:15px;margin-top:4px">Promedio: <strong id="progressAvg">0%</strong></p>
+</div>
+</div>
+</div>
+
+<!-- PROGRESO POR MATERIA -->
+<div class="card">
+<h3 style="margin-bottom:16px">&#128218; Progreso por Materia</h3>
+<div class="subject-grid" id="subjectGrid"></div>
+</div>
+
+<!-- GRÁFICOS -->
+<div id="chartsContainer">
+<div class="chart-row">
+<div class="chart-section"><h3>&#128200; Evolución General de Puntajes</h3><div style="height:300px"><canvas id="chartEvolucion"></canvas></div></div>
+<div class="chart-section"><h3>&#128218; Puntaje por Materia</h3><div style="height:300px"><canvas id="chartPorMateria"></canvas></div></div>
+</div>
+<div class="chart-row">
+<div class="chart-section"><h3>&#128202; Cantidad de Intentos por Materia</h3><div style="height:300px"><canvas id="chartIntentos"></canvas></div></div>
+<div class="chart-section"><h3>&#127919; Promedio por Materia</h3><div style="height:300px"><canvas id="chartPromedio"></canvas></div></div>
+</div>
 </div>
 
 </div>
@@ -36,13 +80,44 @@
 fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
   document.getElementById('userName').textContent=d.user.nombre;
   if(d.user.rol!=='estudiante')window.location.href='/admin/dashboard.html';
-  loadStats();
+  loadProgreso();
+  loadHistorico();
 }).catch(function(){window.location.href='/'});
 
-function loadStats(){
+function loadProgreso(){
+  fetch('/api/estudiante/progreso').then(function(r){return r.json()}).then(function(d){
+    document.getElementById('progressComp').textContent=d.completados;
+    document.getElementById('progressTotal').textContent=d.totalCuestionarios;
+    document.getElementById('progressAvg').textContent=d.promedioGeneral+'%';
+    document.getElementById('progressPct').textContent=d.porcentaje+'%';
+    var offset=377-377*d.porcentaje/100;
+    document.getElementById('progressCircle').style.strokeDashoffset=offset;
+    renderSubjects(d.porMateria);
+  });
+}
+
+function renderSubjects(materias){
+  var grid=document.getElementById('subjectGrid');
+  grid.innerHTML='';
+  var colors=['#2563eb','#16a34a','#f59e0b','#dc2626','#8b5cf6','#06b6d4'];
+  materias.forEach(function(m,i){
+    var pct=m.total>0?Math.round(m.completados*100/m.total):0;
+    var color=colors[i%colors.length];
+    var html='<div class="subject-card" style="border-left-color:'+color+'">';
+    html+='<div style="display:flex;justify-content:space-between;align-items:center">';
+    html+='<h4>'+m.nombre+'</h4>';
+    html+='<span class="mini-pct" style="color:'+color+'">'+m.promedio+'%</span></div>';
+    html+='<div class="mini-bar"><div class="mini-bar-fill" style="width:'+pct+'%;background:'+color+'"></div></div>';
+    html+='<div class="mini-stats"><span>'+m.completados+'/'+m.total+' completados</span><span>'+pct+'%</span></div>';
+    html+='</div>';
+    grid.innerHTML+=html;
+  });
+}
+
+function loadHistorico(){
   fetch('/api/estudiante/historico').then(function(r){return r.json()}).then(function(d){
     if(d.historico.length===0){
-      document.getElementById('statsContent').innerHTML='<div class="no-data"><div class="icon">&#128221;</div><p>Aún no tienes resultados. ¡Realiza un cuestionario!</p><a href="/student/dashboard.html" class="btn btn-primary" style="margin-top:16px">Ir al Dashboard</a></div>';
+      document.getElementById('chartsContainer').innerHTML='<div class="no-data"><div class="icon">&#128221;</div><p>Aún no tienes gráficos. ¡Realiza más cuestionarios!</p></div>';
       return;
     }
     renderAllCharts(d.historico);
@@ -50,17 +125,6 @@ function loadStats(){
 }
 
 function renderAllCharts(data){
-  var container=document.getElementById('statsContent');
-  var html='<div class="chart-row">';
-  html+='<div class="chart-section"><h3>&#128200; Evolución General de Puntajes</h3><div style="height:300px"><canvas id="chartEvolucion"></canvas></div></div>';
-  html+='<div class="chart-section"><h3>&#128218; Puntaje por Materia</h3><div style="height:300px"><canvas id="chartPorMateria"></canvas></div></div>';
-  html+='</div>';
-  html+='<div class="chart-row">';
-  html+='<div class="chart-section"><h3>&#128202; Cantidad de Intentos por Materia</h3><div style="height:300px"><canvas id="chartIntentos"></canvas></div></div>';
-  html+='<div class="chart-section"><h3>&#127919; Promedio por Materia</h3><div style="height:300px"><canvas id="chartPromedio"></canvas></div></div>';
-  html+='</div>';
-  container.innerHTML=html;
-
   var materias={};
   data.forEach(function(h){
     var key=h.materia_nombre||'Otros';
