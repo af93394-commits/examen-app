@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Mis Estadísticas</title>
+<link rel="stylesheet" href="/css/styles.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<style>
+.chart-section{background:#fff;border-radius:12px;padding:24px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:20px}
+.chart-section h3{font-size:18px;margin-bottom:20px;color:#1e293b}
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+@media(max-width:768px){.chart-row{grid-template-columns:1fr}}
+.no-data{text-align:center;padding:60px 20px;color:#64748b}
+.no-data .icon{font-size:48px;margin-bottom:16px}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
+<nav>
+<a href="/student/dashboard.html"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/estadisticas.html" class="active"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
+<a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>&#128202; Mis Estadísticas</h1></div>
+
+<div id="statsContent">
+<div class="no-data"><div class="icon">&#128202;</div><p>Cargando estadísticas...</p></div>
+</div>
+
+</div>
+<script>
+fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+  document.getElementById('userName').textContent=d.user.nombre;
+  if(d.user.rol!=='estudiante')window.location.href='/admin/dashboard.html';
+  loadStats();
+}).catch(function(){window.location.href='/'});
+
+function loadStats(){
+  fetch('/api/estudiante/historico').then(function(r){return r.json()}).then(function(d){
+    if(d.historico.length===0){
+      document.getElementById('statsContent').innerHTML='<div class="no-data"><div class="icon">&#128221;</div><p>Aún no tienes resultados. ¡Realiza un cuestionario!</p><a href="/student/dashboard.html" class="btn btn-primary" style="margin-top:16px">Ir al Dashboard</a></div>';
+      return;
+    }
+    renderAllCharts(d.historico);
+  });
+}
+
+function renderAllCharts(data){
+  var container=document.getElementById('statsContent');
+  var html='<div class="chart-row">';
+  html+='<div class="chart-section"><h3>&#128200; Evolución General de Puntajes</h3><div style="height:300px"><canvas id="chartEvolucion"></canvas></div></div>';
+  html+='<div class="chart-section"><h3>&#128218; Puntaje por Materia</h3><div style="height:300px"><canvas id="chartPorMateria"></canvas></div></div>';
+  html+='</div>';
+  html+='<div class="chart-row">';
+  html+='<div class="chart-section"><h3>&#128202; Cantidad de Intentos por Materia</h3><div style="height:300px"><canvas id="chartIntentos"></canvas></div></div>';
+  html+='<div class="chart-section"><h3>&#127919; Promedio por Materia</h3><div style="height:300px"><canvas id="chartPromedio"></canvas></div></div>';
+  html+='</div>';
+  container.innerHTML=html;
+
+  var materias={};
+  data.forEach(function(h){
+    var key=h.materia_nombre||'Otros';
+    if(!materias[key])materias[key]=[];
+    materias[key].push({fecha:new Date(h.inicio_en),pct:parseInt(h.porcentaje)});
+  });
+
+  // Gráfico 1: Evolución General
+  var allPts=data.map(function(h){return{fecha:new Date(h.inicio_en),pct:parseInt(h.porcentaje)};});
+  allPts.sort(function(a,b){return a.fecha-b.fecha});
+  var labels=allPts.map(function(p,i){return(i+1)+''});
+  var ctxEvo=document.getElementById('chartEvolucion').getContext('2d');
+  new Chart(ctxEvo,{type:'line',data:{labels:labels,datasets:[{label:'Puntaje %',data:allPts.map(function(p){return p.pct}),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.1)',fill:true,tension:.3,pointRadius:5,pointBackgroundColor:'#2563eb'}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%'}}}}}});
+
+  // Gráfico 2: Puntaje por Materia
+  var matColors=['#2563eb','#16a34a','#f59e0b','#dc2626','#8b5cf6','#06b6d4'];
+  var datasets=Object.keys(materias).map(function(nombre,i){
+    var pts=materias[nombre].sort(function(a,b){return a.fecha-b.fecha});
+    return{label:nombre,data:pts.map(function(p){return p.pct}),borderColor:matColors[i%matColors.length],tension:.3,pointRadius:4};
+  });
+  var maxLen=Math.max.apply(null,Object.values(materias).map(function(arr){return arr.length}));
+  var matLabels=[];for(var i=1;i<=maxLen;i++)matLabels.push(i+'');
+  var ctxMat=document.getElementById('chartPorMateria').getContext('2d');
+  new Chart(ctxMat,{type:'line',data:{labels:matLabels,datasets:datasets},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom'}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%'}}}}}});
+
+  // Gráfico 3: Intentos por Materia (barras)
+  var matNombres=Object.keys(materias);
+  var matCounts=matNombres.map(function(n){return materias[n].length});
+  var ctxIntentos=document.getElementById('chartIntentos').getContext('2d');
+  new Chart(ctxIntentos,{type:'bar',data:{labels:matNombres,datasets:[{label:'Intentos',data:matCounts,backgroundColor:matColors.slice(0,matNombres.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,ticks:{stepSize:1}}}}});
+
+  // Gráfico 4: Promedio por Materia (barras)
+  var matAvg=matNombres.map(function(n){
+    var pts=materias[n];
+    return Math.round(pts.reduce(function(s,p){return s+p.pct},0)/pts.length);
+  });
+  var ctxProm=document.getElementById('chartPromedio').getContext('2d');
+  new Chart(ctxProm,{type:'bar',data:{labels:matNombres,datasets:[{label:'Promedio %',data:matAvg,backgroundColor:matColors.slice(0,matNombres.length)}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%'}}}}}});
+}
+
+function logout(){fetch('/api/logout',{method:'POST'}).then(function(){window.location.href='/';})}
+</script>
+</body></html>

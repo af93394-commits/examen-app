@@ -4,7 +4,6 @@
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Mi Dashboard</title>
 <link rel="stylesheet" href="/css/styles.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <style>
 .progress-ring{position:relative;width:120px;height:120px;margin:0 auto}
 .progress-ring svg{transform:rotate(-90deg)}
@@ -28,10 +27,6 @@
 .pending-item .title{font-weight:600;font-size:14px;color:#1e293b}
 .pending-item .meta{font-size:12px;color:#64748b;margin-top:2px}
 .pending-item .start-btn{padding:6px 14px;border-radius:6px;font-size:12px;font-weight:600}
-.chart-section{background:#fff;border-radius:12px;padding:20px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:16px}
-.chart-section h3{font-size:16px;margin-bottom:16px;color:#1e293b}
-.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-@media(max-width:768px){.chart-row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -39,6 +34,7 @@
 <div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
 <nav>
 <a href="/student/dashboard.html" class="active"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
 <a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
 </nav>
 <div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
@@ -65,6 +61,7 @@
 <h2 style="font-size:20px;margin-bottom:8px">Tu Progreso General</h2>
 <p style="color:#64748b;font-size:14px"><span id="progressComp">0</span> de <span id="progressTotal">0</span> cuestionarios completados</p>
 <p style="color:#64748b;font-size:14px;margin-top:4px">Promedio: <strong id="progressAvg">0%</strong></p>
+<a href="/student/estadisticas.html" class="btn btn-sm btn-primary" style="margin-top:12px">&#128202; Ver Gráficos</a>
 </div>
 </div>
 </div>
@@ -75,15 +72,6 @@
 <div class="subject-grid" id="subjectGrid"></div>
 </div>
 
-<!-- GRÁFICO DE EVOLUCIÓN -->
-<div class="chart-section">
-<h3>&#128200; Evolución de tus Puntajes</h3>
-<div class="chart-row">
-<div><canvas id="chartEvolucion"></canvas></div>
-<div><canvas id="chartPorMateria"></canvas></div>
-</div>
-</div>
-
 <!-- CUESTIONARIOS PENDIENTES -->
 <div class="card">
 <div class="card-header"><h3>&#128203; Cuestionarios Pendientes</h3><span class="badge badge-admin" id="badgePend">0</span></div>
@@ -92,15 +80,12 @@
 
 </div>
 <script>
-var chartsInit = false;
-
 fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
   document.getElementById('userName').textContent=d.user.nombre;
   document.getElementById('nombreEst').textContent=d.user.nombre;
   if(d.user.rol!=='estudiante')window.location.href='/admin/dashboard.html';
   loadProgreso();
   loadPendientes();
-  loadHistorico();
 }).catch(function(){window.location.href='/'});
 
 function loadProgreso(){
@@ -153,36 +138,6 @@ function loadPendientes(){
       list.appendChild(li);
     });
   });
-}
-
-function loadHistorico(){
-  fetch('/api/estudiante/historico').then(function(r){return r.json()}).then(function(d){
-    if(d.historico.length===0)return;
-    renderCharts(d.historico);
-  });
-}
-
-function renderCharts(data){
-  var materias={};
-  data.forEach(function(h){
-    var key=h.materia_nombre||'Otros';
-    if(!materias[key])materias[key]=[];
-    materias[key].push({fecha:new Date(h.inicio_en),pct:parseInt(h.porcentaje),titulo:h.cuestionario_titulo});
-  });
-  var allPts=data.map(function(h){return{fecha:new Date(h.inicio_en),pct:parseInt(h.porcentaje),materia:h.materia_nombre||'Otros'};});
-  allPts.sort(function(a,b){return a.fecha-b.fecha});
-  var labels=allPts.map(function(p,i){return(i+1)+''});
-  var ctxEvo=document.getElementById('chartEvolucion').getContext('2d');
-  new Chart(ctxEvo,{type:'line',data:{labels:labels,datasets:[{label:'Puntaje %',data:allPts.map(function(p){return p.pct}),borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.1)',fill:true,tension:.3,pointRadius:4,pointBackgroundColor:'#2563eb'}]},options:{responsive:true,plugins:{legend:{display:false},title:{display:true,text:'Evolución General de Puntajes'}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%'}}}}}});
-  var matColors=['#2563eb','#16a34a','#f59e0b','#dc2626','#8b5cf6','#06b6d4'];
-  var datasets=Object.keys(materias).map(function(nombre,i){
-    var pts=materias[nombre].sort(function(a,b){return a.fecha-b.fecha});
-    return{label:nombre,data:pts.map(function(p){return p.pct}),borderColor:matColors[i%matColors.length],tension:.3,pointRadius:3};
-  });
-  var maxLen=Math.max.apply(null,Object.values(materias).map(function(arr){return arr.length}));
-  var matLabels=[];for(var i=1;i<=maxLen;i++)matLabels.push(i+'');
-  var ctxMat=document.getElementById('chartPorMateria').getContext('2d');
-  new Chart(ctxMat,{type:'line',data:{labels:matLabels,datasets:datasets},options:{responsive:true,plugins:{legend:{position:'bottom'},title:{display:true,text:'Puntaje por Materia'}},scales:{y:{beginAtZero:true,max:100,ticks:{callback:function(v){return v+'%'}}}}}});
 }
 
 function iniciarCuestionario(id,titulo){
