@@ -171,12 +171,36 @@ async function initDB() {
         ['RETAKE_AND_IMPROVE','Superación','Repasa y mejora tu puntuación','especial','comun',15,52],
         ['HARD_QUIZ_PASSED_AFTER_3_ATTEMPTS','Conquistador','Aprueba tras 3+ intentos','especial','epico',40,53],
         ['BADGES_EARNED_10','Coleccionista','Obtiene 10 insignias','especial','raro',20,54],
-        ['BADGES_EARNED_20','Maestro Coleccionista','Obtiene 20 insignias','especial','epico',40,55]
+        ['BADGES_EARNED_20','Maestro Coleccionista','Obtiene 20 insignias','especial','epico',40,55],
+        ['STREAK_3_DAYS','Brote nuevo','3 dias seguidos de estudio','racha','comun',10,4],
+        ['STREAK_6_DAYS','Pisada firme','6 dias seguidos de estudio','racha','comun',12,5],
+        ['STREAK_12_DAYS','Cuarenta soles','12 dias seguidos de estudio','racha','raro',20,6],
+        ['STREAK_22_DAYS','Cien dias rugiendo','22 dias seguidos de estudio','racha','epico',40,7],
+        ['STREAK_30_NO_MISS','Racha de hierro','30 dias sin fallar un dia activo','racha','epico',45,8],
+        ['STREAK_32_DAYS','Migracion anual','32 dias seguidos de estudio','racha','legendario',80,9],
+        ['TOTAL_QUIZZES_2','Brote inicial','Completa 2 cuestionarios','volumen','comun',10,15],
+        ['TOTAL_QUIZZES_4','Cuatro pasos','Completa 4 cuestionarios','volumen','raro',15,16],
+        ['TOTAL_QUIZZES_6','Seis huellas','Completa 6 cuestionarios','volumen','raro',20,17],
+        ['TOTAL_QUIZZES_8','Ocho rugidos','Completa 8 cuestionarios','volumen','epico',25,18],
+        ['ALL_QUIZZES_COMPLETED','Coleccion completa','Completa todos los cuestionarios disponibles','volumen','legendario',100,19],
+        ['ONE_CATEGORY_MASTERED','Cerebro de pico','Domina 1 categoria al 100%','mastery','comun',15,27],
+        ['SIX_CONSECUTIVE_ABOVE_95','Sin tropiezos','6 cuestionarios seguidos por encima del 95%','mastery','raro',30,28],
+        ['ALL_CATEGORIES_MASTERED','Erudito jurasico','Domina todas las categorias al 100%','mastery','legendario',80,29],
+        ['RETRY_QUESTION_CORRECTED','Memoria de piedra','Responde bien una pregunta que fallo antes','mastery','raro',25,30],
+        ['ACCURACY_90PCT_OVER_10','Instinto certero','90% de aciertos en 10 cuestionarios','mastery','epico',40,31],
+        ['QUIZ_DAWN_5_7AM','Cazador del amanecer','Cuestionario entre 5am y 7am','horario','comun',15,40],
+        ['QUIZ_NOON_12PM','Medio dia activo','Cuestionario entre 12pm y 1pm','horario','comun',15,41],
+        ['QUIZ_SIESTA_1_3PM','Siesta productiva','Cuestionario entre 1pm y 3pm','horario','comun',15,42],
+        ['QUIZ_DUSK_6_8PM','Guardian del atardecer','Cuestionario entre 6pm y 8pm','horario','comun',15,43],
+        ['SAME_HOUR_5_DAYS','Constancia de reloj','Cuestionario a la misma hora 5 dias distintos','horario','raro',25,44],
+        ['QUIZ_UNDER_30MIN','Velocista nato','Termina un cuestionario en menos de 30 minutos','velocidad','comun',15,45],
+        ['TWO_QUIZZES_UNDER_60MIN','Doble velocidad','Termina dos cuestionarios en menos de 60 minutos','velocidad','raro',25,46],
+        ['EXACT_SCORE_77','Numero de la suerte','Obtiene exactamente 77% en un cuestionario','especial','raro',20,56]
       ];
       for (const b of badges) {
         await db.query('INSERT INTO badges (clave, nombre, descripcion, categoria, rareza, puntos, orden_display) VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT DO NOTHING', b);
       }
-      console.log('35 insignias insertadas');
+      console.log('57 insignias insertadas');
     }
 
     const m = await db.query('SELECT COUNT(*) as t FROM materias');

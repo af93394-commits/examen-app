@@ -145,10 +145,173 @@ module.exports = function(db) {
         return localHour < 8;
       }
 
-      case 'QUIZ_BEFORE_6AM': {
+      case 'STREAK_3_DAYS': {
+        const streak = await calcularRacha(usuarioId);
+        return streak >= 3;
+      }
+
+      case 'STREAK_6_DAYS': {
+        const streak = await calcularRacha(usuarioId);
+        return streak >= 6;
+      }
+
+      case 'STREAK_12_DAYS': {
+        const streak = await calcularRacha(usuarioId);
+        return streak >= 12;
+      }
+
+      case 'STREAK_22_DAYS': {
+        const streak = await calcularRacha(usuarioId);
+        return streak >= 22;
+      }
+
+      case 'STREAK_30_NO_MISS': {
+        const streak = await calcularRacha(usuarioId);
+        return streak >= 30;
+      }
+
+      case 'STREAK_32_DAYS': {
+        const streak = await calcularRacha(usuarioId);
+        return streak >= 32;
+      }
+
+      case 'TOTAL_QUIZZES_2': {
+        const r = await db.query('SELECT COUNT(*) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [usuarioId]);
+        return parseInt(r.rows[0].t) >= 2;
+      }
+
+      case 'TOTAL_QUIZZES_4': {
+        const r = await db.query('SELECT COUNT(*) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [usuarioId]);
+        return parseInt(r.rows[0].t) >= 4;
+      }
+
+      case 'TOTAL_QUIZZES_6': {
+        const r = await db.query('SELECT COUNT(*) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [usuarioId]);
+        return parseInt(r.rows[0].t) >= 6;
+      }
+
+      case 'TOTAL_QUIZZES_8': {
+        const r = await db.query('SELECT COUNT(*) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [usuarioId]);
+        return parseInt(r.rows[0].t) >= 8;
+      }
+
+      case 'ALL_QUIZZES_COMPLETED': {
+        const total = await db.query('SELECT COUNT(*) as t FROM cuestionarios WHERE activo=1');
+        const completados = await db.query('SELECT COUNT(DISTINCT cuestionario_id) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [usuarioId]);
+        return parseInt(completados.rows[0].t) >= parseInt(total.rows[0].t);
+      }
+
+      case 'ONE_CATEGORY_MASTERED': {
+        const r = await db.query(`
+          SELECT COUNT(DISTINCT c.materia_id) as t FROM intentos i
+          JOIN cuestionarios c ON i.cuestionario_id = c.id
+          WHERE i.usuario_id=$1 AND i.completado=1 AND i.puntuacion = i.total_preguntas AND i.total_preguntas > 0
+        `, [usuarioId]);
+        return parseInt(r.rows[0].t) >= 1;
+      }
+
+      case 'SIX_CONSECUTIVE_ABOVE_95': {
+        const r = await db.query(`
+          SELECT CASE WHEN total_preguntas > 0 THEN puntuacion * 100.0 / total_preguntas ELSE 0 END as pct
+          FROM intentos WHERE usuario_id=$1 AND completado=1 ORDER BY id DESC LIMIT 6
+        `, [usuarioId]);
+        if (r.rows.length < 6) return false;
+        return r.rows.every(row => parseFloat(row.pct) >= 95);
+      }
+
+      case 'ALL_CATEGORIES_MASTERED': {
+        const total = await db.query('SELECT COUNT(*) as t FROM materias WHERE activo=1');
+        const mastered = await db.query(`
+          SELECT COUNT(DISTINCT c.materia_id) as t FROM intentos i
+          JOIN cuestionarios c ON i.cuestionario_id = c.id
+          WHERE i.usuario_id=$1 AND i.completado=1 AND i.puntuacion = i.total_preguntas AND i.total_preguntas > 0
+        `, [usuarioId]);
+        return parseInt(mastered.rows[0].t) >= parseInt(total.rows[0].t);
+      }
+
+      case 'RETRY_QUESTION_CORRECTED': {
+        const r = await db.query(`
+          SELECT ir.pregunta_id, ir.es_correcta FROM intento_respuestas ir
+          WHERE ir.intento_id = $1 AND ir.es_correcta = 1
+        `, [intentoId]);
+        if (r.rows.length === 0) return false;
+        for (const row of r.rows) {
+          const prev = await db.query(`
+            SELECT es_correcta FROM intento_respuestas
+            WHERE pregunta_id=$1 AND intento_id < $2
+            ORDER BY intento_id DESC LIMIT 1
+          `, [row.pregunta_id, intentoId]);
+          if (prev.rows.length > 0 && prev.rows[0].es_correcta === 0) return true;
+        }
+        return false;
+      }
+
+      case 'ACCURACY_90PCT_OVER_10': {
+        const r = await db.query(`
+          SELECT COUNT(*) as total,
+            SUM(CASE WHEN puntuacion > 0 AND total_preguntas > 0 AND puntuacion * 100.0 / total_preguntas >= 90 THEN 1 ELSE 0 END) as correctas
+          FROM intentos WHERE usuario_id=$1 AND completado=1 ORDER BY id DESC LIMIT 10
+        `, [usuarioId]);
+        if (parseInt(r.rows[0].total) < 10) return false;
+        return parseInt(r.rows[0].correctas) >= 10;
+      }
+
+      case 'QUIZ_DAWN_5_7AM': {
         const hour = new Date(intento.inicio_en).getUTCHours();
         const localHour = (hour - 5 + 24) % 24;
-        return localHour < 6;
+        return localHour >= 5 && localHour < 7;
+      }
+
+      case 'QUIZ_NOON_12PM': {
+        const hour = new Date(intento.inicio_en).getUTCHours();
+        const localHour = (hour - 5 + 24) % 24;
+        return localHour >= 12 && localHour < 13;
+      }
+
+      case 'QUIZ_SIESTA_1_3PM': {
+        const hour = new Date(intento.inicio_en).getUTCHours();
+        const localHour = (hour - 5 + 24) % 24;
+        return localHour >= 13 && localHour < 15;
+      }
+
+      case 'QUIZ_DUSK_6_8PM': {
+        const hour = new Date(intento.inicio_en).getUTCHours();
+        const localHour = (hour - 5 + 24) % 24;
+        return localHour >= 18 && localHour < 20;
+      }
+
+      case 'SAME_HOUR_5_DAYS': {
+        const r = await db.query(`
+          SELECT EXTRACT(HOUR FROM inicio_en) as hora, COUNT(DISTINCT DATE(inicio_en)) as dias
+          FROM intentos WHERE usuario_id=$1 AND completado=1
+          GROUP BY EXTRACT(HOUR FROM inicio_en) HAVING COUNT(DISTINCT DATE(inicio_en)) >= 5
+        `, [usuarioId]);
+        return r.rows.length > 0;
+      }
+
+      case 'QUIZ_UNDER_30MIN': {
+        if (!intento.fin_en) return false;
+        const duracionMs = new Date(intento.fin_en) - new Date(intento.inicio_en);
+        return duracionMs < 30 * 60 * 1000;
+      }
+
+      case 'TWO_QUIZZES_UNDER_60MIN': {
+        const r = await db.query(`
+          SELECT fin_en, inicio_en FROM intentos
+          WHERE usuario_id=$1 AND completado=1 AND fin_en IS NOT NULL
+          ORDER BY id DESC LIMIT 2
+        `, [usuarioId]);
+        if (r.rows.length < 2) return false;
+        const first = new Date(r.rows[1].inicio_en);
+        const last = new Date(r.rows[0].fin_en);
+        const totalMs = last - first;
+        return totalMs < 60 * 60 * 1000;
+      }
+
+      case 'EXACT_SCORE_77': {
+        if (intento.total_preguntas === 0) return false;
+        const pct = intento.puntuacion * 100.0 / intento.total_preguntas;
+        return Math.round(pct) === 77;
       }
 
       case 'QUIZ_AFTER_10PM': {
