@@ -108,7 +108,7 @@ function loadCuestionariosMateria(materiaId, color){
       return;
     }
     d.cuestionarios.forEach(function(c){
-      var esPendiente=!intentadosSet.has(c.id);
+      var esPendiente=intentadosSet.has(c.id);
       var card=document.createElement('div');
       card.className='cue-card';
       var html='<div class="cue-title">'+c.titulo+'</div>';
