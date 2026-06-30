@@ -589,6 +589,68 @@ app.get('/api/admin/intentos/:id/detalle', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ============ STATS ESTUDIANTE ============
+app.get('/api/estudiante/progreso', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const materias = await db.query(`SELECT m.id, m.nombre,
+      (SELECT COUNT(*) FROM cuestionarios c WHERE c.materia_id = m.id AND c.activo = 1) as total_cuestionarios
+      FROM materias m WHERE m.activo = 1 ORDER BY m.nombre`);
+    const intentos = await db.query(`SELECT c.materia_id,
+      COUNT(DISTINCT i.cuestionario_id) as completados,
+      ROUND(AVG(CASE WHEN i.total_preguntas > 0 THEN ROUND(i.puntuacion * 100.0 / i.total_preguntas) ELSE 0 END), 1) as promedio
+      FROM intentos i JOIN cuestionarios c ON i.cuestionario_id = c.id
+      WHERE i.usuario_id = $1 AND i.completado = 1
+      GROUP BY c.materia_id`, [userId]);
+    const intentMap = {};
+    intentos.rows.forEach(r => { intentMap[r.materia_id] = r; });
+    const totalCue = materias.rows.reduce((s, m) => s + parseInt(m.total_cuestionarios), 0);
+    const totalComp = intentos.rows.reduce((s, r) => s + parseInt(r.completados), 0);
+    const promedioGeneral = intentos.rows.length > 0
+      ? Math.round(intentos.rows.reduce((s, r) => s + parseFloat(r.promedio || 0), 0) / intentos.rows.length)
+      : 0;
+    const porMateria = materias.rows.map(m => ({
+      id: m.id, nombre: m.nombre,
+      total: parseInt(m.total_cuestionarios),
+      completados: intentMap[m.id] ? parseInt(intentMap[m.id].completados) : 0,
+      promedio: intentMap[m.id] ? parseFloat(intentMap[m.id].promedio) : 0
+    }));
+    res.json({ totalCuestionarios: totalCue, completados: totalComp, porcentaje: totalCue > 0 ? Math.round(totalComp * 100 / totalCue) : 0, promedioGeneral, porMateria });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/estudiante/pendientes', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const cuestionarios = await db.query(`SELECT c.id, c.titulo, c.tiempo_limite, c.materia_id,
+      m.nombre as materia_nombre,
+      (SELECT COUNT(*) FROM cuestionario_preguntas WHERE cuestionario_id = c.id) as total_preguntas
+      FROM cuestionarios c LEFT JOIN materias m ON c.materia_id = m.id
+      WHERE c.activo = 1 ORDER BY c.materia_id, c.id`);
+    const intentados = await db.query(`SELECT DISTINCT cuestionario_id FROM intentos WHERE usuario_id = $1 AND completado = 1`, [userId]);
+    const intentadosSet = new Set(intentados.rows.map(r => r.cuestionario_id));
+    const pendientes = cuestionarios.rows.filter(c => !intentadosSet.has(c.id));
+    res.json({ pendientes, totalPendientes: pendientes.length });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/estudiante/historico', requireAuth, async (req, res) => {
+  try {
+    const userId = req.session.user.id;
+    const historico = await db.query(`SELECT i.id, i.cuestionario_id, c.titulo as cuestionario_titulo,
+      c.materia_id, m.nombre as materia_nombre,
+      i.puntuacion, i.total_preguntas,
+      CASE WHEN i.total_preguntas > 0 THEN ROUND(i.puntuacion * 100.0 / i.total_preguntas) ELSE 0 END as porcentaje,
+      i.inicio_en
+      FROM intentos i
+      LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
+      LEFT JOIN materias m ON c.materia_id = m.id
+      WHERE i.usuario_id = $1 AND i.completado = 1
+      ORDER BY i.inicio_en ASC`, [userId]);
+    res.json({ historico: historico.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============ STATS ============
 app.get('/api/stats', requireAdmin, async (req, res) => {
   try {
