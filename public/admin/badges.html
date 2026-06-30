@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Gestionar Insignias</title>
+<link rel="stylesheet" href="/css/styles.css">
+<style>
+.filter-bar{display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.filter-bar select,.filter-bar input{padding:8px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px;background:#fff}
+.stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:24px}
+.stat-box{background:#fff;border-radius:12px;padding:20px;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.stat-box .num{font-size:28px;font-weight:700;color:#2563eb}
+.stat-box .lbl{font-size:13px;color:#64748b;margin-top:4px}
+.rarity-comun{border-left:4px solid #94a3b8}
+.rarity-raro{border-left:4px solid #3b82f6}
+.rarity-epico{border-left:4px solid #a855f7}
+.rarity-legendario{border-left:4px solid #f59e0b}
+.rarity-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;text-transform:uppercase}
+.rarity-badge.comun{background:#f1f5f9;color:#64748b}
+.rarity-badge.raro{background:#dbeafe;color:#2563eb}
+.rarity-badge.epico{background:#f3e8ff;color:#9333ea}
+.rarity-badge.legendario{background:#fef3c7;color:#d97706}
+.cat-badge{display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;background:#f0fdf4;color:#16a34a;margin-right:4px}
+.table-container table{width:100%}
+.table-container th{text-align:left;padding:12px 16px;border-bottom:2px solid #e2e8f0;font-size:13px;color:#64748b;font-weight:600}
+.table-container td{padding:12px 16px;border-bottom:1px solid #f1f5f9;font-size:14px}
+.table-container tr:hover{background:#f8fafc}
+.toggle-btn{cursor:pointer;padding:4px 12px;border-radius:20px;border:none;font-size:12px;font-weight:600}
+.toggle-btn.on{background:#dcfce7;color:#16a34a}
+.toggle-btn.off{background:#fee2e2;color:#dc2626}
+.tab-btns{display:flex;gap:4px;margin-bottom:20px}
+.tab-btn{padding:8px 20px;border:none;background:#f1f5f9;border-radius:8px;cursor:pointer;font-size:14px;font-weight:500;color:#64748b}
+.tab-btn.active{background:#2563eb;color:#fff}
+.otorgar-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.otorgar-row select{width:100%;padding:10px;border:1px solid #e2e8f0;border-radius:8px;font-size:14px}
+.otorgar-list{max-height:300px;overflow-y:auto}
+.otorgar-item{display:flex;justify-content:space-between;align-items:center;padding:10px 16px;border-bottom:1px solid #f1f5f9}
+.otorgar-item:hover{background:#f8fafc}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#9881; Admin</h2><small>Panel de control</small></div>
+<nav>
+<a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
+<a href="/admin/usuarios.html"><span class="icon">&#128100;</span><span>Usuarios</span></a>
+<a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
+<a href="/admin/cuestionarios.html"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/materias.html"><span class="icon">&#128218;</span><span>Materias</span></a>
+<a href="/admin/informes.html"><span class="icon">&#128202;</span><span>Informes</span></a>
+<a href="/admin/badges.html" class="active"><span class="icon">&#127942;</span><span>Insignias</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>&#127942; Gestionar Insignias</h1><button class="btn btn-primary" onclick="openModal()">+ Nueva Insignia</button></div>
+
+<div class="stats-row" id="statsRow"></div>
+
+<div class="tab-btns">
+<button class="tab-btn active" onclick="showTab('lista',this)">Lista de Insignias</button>
+<button class="tab-btn" onclick="showTab('otorgar',this)">Otorgar a Estudiante</button>
+<button class="tab-btn" onclick="showTab('historial',this)">Historial de Otorgaciones</button>
+</div>
+
+<div id="tab-lista">
+<div class="filter-bar">
+<select id="filterCat" onchange="load()"><option value="">Todas las categorias</option></select>
+<select id="filterRarity" onchange="load()"><option value="">Todas las rarezas</option></select>
+<select id="filterStatus" onchange="load()"><option value="">Todos</option><option value="1">Activas</option><option value="0">Inactivas</option></select>
+<input type="text" id="filterSearch" placeholder="Buscar insignia..." oninput="load()">
+</div>
+<div class="table-container">
+<table><thead><tr><th>ID</th><th>Clave</th><th>Nombre</th><th>Descripcion</th><th>Categoria</th><th>Rareza</th><th>Puntos</th><th>Otorgadas</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="tablaBadges"></tbody></table>
+</div>
+</div>
+
+<div id="tab-otorgar" style="display:none">
+<div class="card">
+<h3 style="margin-bottom:16px">&#127942; Otorgar Insignia Manualmente</h3>
+<div class="otorgar-row">
+<div class="form-group"><label>Seleccionar Estudiante</label><select id="selEstudiante"></select></div>
+<div class="form-group"><label>Seleccionar Insignia</label><select id="selBadge"></select></div>
+</div>
+<button class="btn btn-primary" onclick="otorgarBadge()" style="margin-top:8px">&#127942; Otorgar Insignia</button>
+</div>
+<div class="card" style="margin-top:20px">
+<h3 style="margin-bottom:16px">Otorgaciones del Estudiante</h3>
+<div class="otorgar-list" id="listaOtorgaciones"></div>
+</div>
+</div>
+
+<div id="tab-historial" style="display:none">
+<div class="filter-bar">
+<select id="histFilterEst" onchange="loadHistorial()"><option value="">Todos los estudiantes</option></select>
+</div>
+<div class="table-container">
+<table><thead><tr><th>Estudiante</th><th>Insignia</th><th>Categoria</th><th>Rareza</th><th>Puntos</th><th>Fecha</th><th>Accion</th></tr></thead>
+<tbody id="tablaHistorial"></tbody></table>
+</div>
+</div>
+
+</div>
+
+<div class="modal-overlay" id="modal">
+<div class="modal">
+<button class="close" onclick="closeModal()">&times;</button>
+<h2 id="modalTitle">Nueva Insignia</h2>
+<form id="badgeForm">
+<input type="hidden" id="editId">
+<div class="form-group"><label>Clave (identificador unico)</label><input type="text" id="fClave" placeholder="Ej: MI_BADGE" required></div>
+<div class="form-group"><label>Nombre</label><input type="text" id="fNombre" placeholder="Nombre visible" required></div>
+<div class="form-group"><label>Descripcion</label><textarea id="fDescripcion" rows="2" required></textarea></div>
+<div class="otorgar-row">
+<div class="form-group"><label>Categoria</label>
+<select id="fCategoria"><option value="racha">Racha</option><option value="volumen">Volumen</option><option value="mastery">Dominio</option><option value="horario">Horario</option><option value="velocidad">Velocidad</option><option value="especial">Especial</option><option value="general">General</option></select></div>
+<div class="form-group"><label>Rareza</label>
+<select id="fRareza"><option value="comun">Comun</option><option value="raro">Raro</option><option value="epico">Epico</option><option value="legendario">Legendario</option></select></div>
+</div>
+<div class="otorgar-row">
+<div class="form-group"><label>Puntos</label><input type="number" id="fPuntos" value="10" min="0"></div>
+<div class="form-group"><label>Orden</label><input type="number" id="fOrden" value="0" min="0"></div>
+</div>
+<div class="form-group"><label>Estado</label><select id="fActivo"><option value="1">Activo</option><option value="0">Inactivo</option></select></div>
+<button type="submit" class="btn btn-primary btn-block">Guardar</button>
+</form>
+</div>
+</div>
+
+<script>
+var allBadges = [], allStudents = [], editing = false;
+
+fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+  document.getElementById('userName').textContent=d.user.nombre;
+  if(d.user.rol!=='admin')window.location.href='/';
+}).catch(function(){window.location.href='/'});
+
+function showTab(tab,btn){
+  document.querySelectorAll('.tab-btn').forEach(function(b){b.classList.remove('active')});
+  btn.classList.add('active');
+  document.getElementById('tab-lista').style.display=tab==='lista'?'':'none';
+  document.getElementById('tab-otorgar').style.display=tab==='otorgar'?'':'none';
+  document.getElementById('tab-historial').style.display=tab==='historial'?'':'none';
+  if(tab==='otorgar')loadStudents();
+  if(tab==='historial')loadHistorial();
+}
+
+function load(){
+  fetch('/api/admin/badges').then(function(r){return r.json()}).then(function(d){
+    allBadges=d.badges;
+    var cats=[],rarities=[];
+    d.badges.forEach(function(b){
+      if(cats.indexOf(b.categoria)===-1)cats.push(b.categoria);
+      if(rarities.indexOf(b.rareza)===-1)rarities.push(b.rareza);
+    });
+    populateSelect('filterCat',cats,'Todas las categorias');
+    populateSelect('filterRarity',rarities,'Todas las rarezas');
+    var fc=document.getElementById('filterCat').value;
+    var fr=document.getElementById('filterRarity').value;
+    var fs=document.getElementById('filterStatus').value;
+    var fq=document.getElementById('filterSearch').value.toLowerCase();
+    var filtered=d.badges.filter(function(b){
+      if(fc&&b.categoria!==fc)return false;
+      if(fr&&b.rareza!==fr)return false;
+      if(fs!==''&&String(b.activo)!==fs)return false;
+      if(fq&&b.nombre.toLowerCase().indexOf(fq)===-1&&b.clave.toLowerCase().indexOf(fq)===-1)return false;
+      return true;
+    });
+    renderStats(d.badges);
+    renderTable(filtered);
+  });
+}
+
+function populateSelect(id,items,label){
+  var s=document.getElementById(id);
+  var v=s.value;
+  s.innerHTML='<option value="">'+label+'</option>';
+  items.forEach(function(i){s.innerHTML+='<option value="'+i+'">'+i+'</option>'});
+  s.value=v;
+}
+
+function renderStats(badges){
+  var total=badges.length;
+  var activas=badges.filter(function(b){return b.activo}).length;
+  var otorgadas=badges.reduce(function(s,b){return s+parseInt(b.total_otorgadas)},0);
+  var puntos=badges.reduce(function(s,b){return s+b.puntos},0);
+  document.getElementById('statsRow').innerHTML=
+    '<div class="stat-box"><div class="num">'+total+'</div><div class="lbl">Total Insignias</div></div>'+
+    '<div class="stat-box"><div class="num" style="color:#16a34a">'+activas+'</div><div class="lbl">Activas</div></div>'+
+    '<div class="stat-box"><div class="num" style="color:#f59e0b">'+otorgadas+'</div><div class="lbl">Otorgadas</div></div>'+
+    '<div class="stat-box"><div class="num" style="color:#a855f7">'+puntos+'</div><div class="lbl">Puntos Totales</div></div>';
+}
+
+function renderTable(badges){
+  var tb=document.getElementById('tablaBadges');
+  tb.innerHTML='';
+  if(badges.length===0){tb.innerHTML='<tr><td colspan="10" style="text-align:center;color:#94a3b8;padding:40px">No hay insignias</td></tr>';return}
+  badges.forEach(function(b){
+    var estado=b.activo?'<button class="toggle-btn on" onclick="toggleBadge('+b.id+')">Activa</button>':'<button class="toggle-btn off" onclick="toggleBadge('+b.id+')">Inactiva</button>';
+    var row='<tr class="rarity-'+b.rareza+'"><td>'+b.id+'</td>';
+    row+='<td><code>'+b.clave+'</code></td>';
+    row+='<td><strong>'+b.nombre+'</strong></td>';
+    row+='<td>'+b.descripcion+'</td>';
+    row+='<td><span class="cat-badge">'+b.categoria+'</span></td>';
+    row+='<td><span class="rarity-badge '+b.rareza+'">'+b.rareza+'</span></td>';
+    row+='<td>'+b.puntos+'</td>';
+    row+='<td>'+b.total_otorgadas+'</td>';
+    row+='<td>'+estado+'</td>';
+    row+='<td class="actions">';
+    row+='<button class="btn btn-sm btn-primary" onclick="editBadge('+JSON.stringify(b).replace(/'/g,'&#39;').replace(/"/g,'&quot;')+')">&#9998;</button> ';
+    row+='<button class="btn btn-sm btn-danger" onclick="deleteBadge('+b.id+')">&#128465;</button></td></tr>';
+    tb.innerHTML+=row;
+  });
+}
+
+function openModal(){
+  editing=false;
+  document.getElementById('modalTitle').textContent='Nueva Insignia';
+  document.getElementById('badgeForm').reset();
+  document.getElementById('editId').value='';
+  document.getElementById('fClave').disabled=false;
+  document.getElementById('fClave').required=true;
+  document.getElementById('fActivo').value='1';
+  document.getElementById('modal').classList.add('active');
+}
+
+function editBadge(b){
+  editing=true;
+  document.getElementById('modalTitle').textContent='Editar Insignia';
+  document.getElementById('editId').value=b.id;
+  document.getElementById('fClave').value=b.clave;
+  document.getElementById('fClave').disabled=true;
+  document.getElementById('fClave').required=false;
+  document.getElementById('fNombre').value=b.nombre;
+  document.getElementById('fDescripcion').value=b.descripcion;
+  document.getElementById('fCategoria').value=b.categoria;
+  document.getElementById('fRareza').value=b.rareza;
+  document.getElementById('fPuntos').value=b.puntos;
+  document.getElementById('fOrden').value=b.orden_display;
+  document.getElementById('fActivo').value=b.activo;
+  document.getElementById('modal').classList.add('active');
+}
+
+function closeModal(){document.getElementById('modal').classList.remove('active')}
+
+document.getElementById('badgeForm').addEventListener('submit',async function(e){
+  e.preventDefault();
+  var id=document.getElementById('editId').value;
+  var body={
+    clave:document.getElementById('fClave').value,
+    nombre:document.getElementById('fNombre').value,
+    descripcion:document.getElementById('fDescripcion').value,
+    categoria:document.getElementById('fCategoria').value,
+    rareza:document.getElementById('fRareza').value,
+    puntos:parseInt(document.getElementById('fPuntos').value),
+    orden_display:parseInt(document.getElementById('fOrden').value),
+    activo:parseInt(document.getElementById('fActivo').value)
+  };
+  if(editing){
+    await fetch('/api/admin/badges/'+id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  }else{
+    var r=await fetch('/api/admin/badges',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d=await r.json();
+    if(d.error){alert(d.error);return}
+  }
+  closeModal();load();
+});
+
+function deleteBadge(id){
+  if(!confirm('Eliminar esta insignia? Se eliminaran todas las otorgaciones asociadas.'))return;
+  fetch('/api/admin/badges/'+id,{method:'DELETE'}).then(function(){load()});
+}
+
+function toggleBadge(id){
+  fetch('/api/admin/badges/'+id+'/toggle',{method:'PUT'}).then(function(){load()});
+}
+
+function loadStudents(){
+  fetch('/api/usuarios').then(function(r){return r.json()}).then(function(d){
+    allStudents=d.usuarios.filter(function(u){return u.rol==='estudiante'&&u.activo});
+    var se=document.getElementById('selEstudiante');
+    se.innerHTML='<option value="">-- Seleccionar estudiante --</option>';
+    allStudents.forEach(function(s){se.innerHTML+='<option value="'+s.id+'">'+s.nombre_completo+' ('+s.usuario+')</option>'});
+    var sb=document.getElementById('selBadge');
+    sb.innerHTML='<option value="">-- Seleccionar insignia --</option>';
+    allBadges.filter(function(b){return b.activo}).forEach(function(b){sb.innerHTML+='<option value="'+b.id+'">'+b.nombre+' ('+b.rareza+')</option>'});
+    se.onchange=function(){loadStudentBadges()};
+    loadStudentBadges();
+  });
+}
+
+function loadStudentBadges(){
+  var uid=document.getElementById('selEstudiante').value;
+  var div=document.getElementById('listaOtorgaciones');
+  if(!uid){div.innerHTML='<div style="text-align:center;color:#94a3b8;padding:20px">Selecciona un estudiante</div>';return}
+  fetch('/api/admin/student-badges?usuario_id='+uid).then(function(r){return r.json()}).then(function(d){
+    div.innerHTML='';
+    if(d.otorgaciones.length===0){div.innerHTML='<div style="text-align:center;color:#94a3b8;padding:20px">Este estudiante no tiene insignias</div>';return}
+    d.otorgaciones.forEach(function(o){
+      div.innerHTML+='<div class="otorgar-item"><div><strong>'+o.badge_nombre+'</strong><br><small style="color:#64748b">'+o.categoria+' &middot; '+o.rareza+' &middot; '+o.puntos+'pts &middot; '+new Date(o.otorgado_en).toLocaleDateString()+'</small></div><button class="btn btn-sm btn-danger" onclick="revokeBadge('+o.id+')">Revocar</button></div>';
+    });
+  });
+}
+
+function otorgarBadge(){
+  var uid=document.getElementById('selEstudiante').value;
+  var bid=document.getElementById('selBadge').value;
+  if(!uid||!bid){alert('Selecciona estudiante e insignia');return}
+  fetch('/api/admin/badges/otorgar',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({usuario_id:parseInt(uid),badge_id:parseInt(bid)})}).then(function(r){return r.json()}).then(function(d){
+    if(d.error){alert(d.error);return}
+    alert(d.message);
+    loadStudentBadges();
+  });
+}
+
+function revokeBadge(id){
+  if(!confirm('Revocar esta otorgacion?'))return;
+  fetch('/api/admin/student-badges/'+id,{method:'DELETE'}).then(function(){loadStudentBadges()});
+}
+
+function loadHistorial(){
+  fetch('/api/admin/student-badges').then(function(r){return r.json()}).then(function(d){
+    var sel=document.getElementById('histFilterEst');
+    var current=sel.value;
+    var students=[];
+    d.otorgaciones.forEach(function(o){if(students.indexOf(o.usuario)===-1)students.push(o.usuario)});
+    sel.innerHTML='<option value="">Todos los estudiantes</option>';
+    students.forEach(function(s){sel.innerHTML+='<option value="'+s+'">'+s+'</option>'});
+    sel.value=current;
+    var filtered=d.otorgaciones;
+    if(current)filtered=filtered.filter(function(o){return o.usuario===current});
+    var tb=document.getElementById('tablaHistorial');
+    tb.innerHTML='';
+    if(filtered.length===0){tb.innerHTML='<tr><td colspan="7" style="text-align:center;color:#94a3b8;padding:40px">No hay otorgaciones</td></tr>';return}
+    filtered.forEach(function(o){
+      var row='<tr><td>'+o.nombre_completo+' ('+o.usuario+')</td>';
+      row+='<td><strong>'+o.badge_nombre+'</strong><br><small style="color:#64748b">'+o.clave+'</small></td>';
+      row+='<td><span class="cat-badge">'+o.categoria+'</span></td>';
+      row+='<td><span class="rarity-badge '+o.rareza+'">'+o.rareza+'</span></td>';
+      row+='<td>'+o.puntos+'</td>';
+      row+='<td>'+new Date(o.otorgado_en).toLocaleString()+'</td>';
+      row+='<td><button class="btn btn-sm btn-danger" onclick="revokeBadgeFromHist('+o.id+')">Revocar</button></td></tr>';
+      tb.innerHTML+=row;
+    });
+  });
+}
+
+function revokeBadgeFromHist(id){
+  if(!confirm('Revocar esta otorgacion?'))return;
+  fetch('/api/admin/student-badges/'+id,{method:'DELETE'}).then(function(){loadHistorial()});
+}
+
+function logout(){fetch('/api/logout',{method:'POST'}).then(function(){window.location.href='/'})}
+load();
+</script>
+</body></html>

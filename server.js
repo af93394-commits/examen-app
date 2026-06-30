@@ -803,6 +803,86 @@ app.get('/api/insignias/progreso', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ============ ADMIN BADGES ============
+app.get('/api/admin/badges', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT b.*,
+      (SELECT COUNT(*) FROM student_badges sb WHERE sb.badge_id = b.id) as total_otorgadas
+      FROM badges b ORDER BY b.categoria, b.orden_display`);
+    res.json({ badges: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/badges', requireAdmin, async (req, res) => {
+  try {
+    const { clave, nombre, descripcion, categoria, rareza, puntos, orden_display } = req.body;
+    if (!clave || !nombre || !descripcion) return res.status(400).json({ error: 'Clave, nombre y descripcion requeridos' });
+    const r = await db.query('INSERT INTO badges (clave, nombre, descripcion, categoria, rareza, puntos, orden_display) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id',
+      [clave.toUpperCase().replace(/\s+/g,'_'), nombre, descripcion, categoria || 'general', rareza || 'comun', puntos || 10, orden_display || 0]);
+    res.json({ id: r.rows[0].id, message: 'Insignia creada' });
+  } catch (e) {
+    if (e.message.includes('unique')) return res.status(400).json({ error: 'Ya existe una insignia con esa clave' });
+    res.status(500).json({ error: e.message });
+  }
+});
+app.put('/api/admin/badges/:id', requireAdmin, async (req, res) => {
+  try {
+    const { nombre, descripcion, categoria, rareza, puntos, orden_display, activo } = req.body;
+    const r = await db.query('UPDATE badges SET nombre=$1, descripcion=$2, categoria=$3, rareza=$4, puntos=$5, orden_display=$6, activo=$7 WHERE id=$8',
+      [nombre, descripcion, categoria, rareza, puntos, orden_display, activo, req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Insignia actualizada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/admin/badges/:id', requireAdmin, async (req, res) => {
+  try {
+    await db.query('DELETE FROM student_badges WHERE badge_id = $1', [req.params.id]);
+    const r = await db.query('DELETE FROM badges WHERE id = $1', [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Insignia eliminada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/admin/badges/:id/toggle', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('UPDATE badges SET activo = CASE WHEN activo=1 THEN 0 ELSE 1 END WHERE id=$1 RETURNING activo', [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ activo: r.rows[0].activo, message: r.rows[0].activo ? 'Activada' : 'Desactivada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.post('/api/admin/badges/otorgar', requireAdmin, async (req, res) => {
+  try {
+    const { usuario_id, badge_id } = req.body;
+    if (!usuario_id || !badge_id) return res.status(400).json({ error: 'Estudiante y insignia requeridos' });
+    const u = await db.query('SELECT id FROM usuarios WHERE id=$1 AND rol=$2', [usuario_id, 'estudiante']);
+    if (u.rows.length === 0) return res.status(404).json({ error: 'Estudiante no encontrado' });
+    const b = await db.query('SELECT id, nombre FROM badges WHERE id=$1', [badge_id]);
+    if (b.rows.length === 0) return res.status(404).json({ error: 'Insignia no encontrada' });
+    await db.query('INSERT INTO student_badges (usuario_id, badge_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [usuario_id, badge_id]);
+    res.json({ message: 'Insignia "' + b.rows[0].nombre + '" otorgada al estudiante' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.delete('/api/admin/student-badges/:id', requireAdmin, async (req, res) => {
+  try {
+    const r = await db.query('DELETE FROM student_badges WHERE id = $1', [req.params.id]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
+    res.json({ message: 'Otorgacion eliminada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/admin/student-badges', requireAdmin, async (req, res) => {
+  try {
+    const { usuario_id } = req.query;
+    let sql = `SELECT sb.*, b.nombre as badge_nombre, b.clave, b.categoria, b.rareza, b.puntos,
+      u.usuario, u.nombre_completo
+      FROM student_badges sb
+      JOIN badges b ON sb.badge_id = b.id
+      JOIN usuarios u ON sb.usuario_id = u.id`;
+    const params = [];
+    if (usuario_id) { sql += ' WHERE sb.usuario_id = $1'; params.push(usuario_id); }
+    sql += ' ORDER BY sb.otorgado_en DESC';
+    const r = await db.query(sql, params);
+    res.json({ otorgaciones: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============ URL PUBLICA ============
 app.get('/api/url-publica', requireAdmin, (req, res) => {
   try {
