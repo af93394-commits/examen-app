@@ -577,10 +577,7 @@ app.delete('/api/cuestionarios/:cid/preguntas/:pid', requireAdmin, async (req, r
 });
 app.get('/api/cuestionarios/:id/preguntas', requireAuth, async (req, res) => {
   try {
-    const r = await db.query(`SELECT p.id, p.texto, p.imagen, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d,
-      p.materia_id, p.creado_por, p.creado_en, p.imagen_opcion_a, p.imagen_opcion_b, p.imagen_opcion_c, p.imagen_opcion_d,
-      p.texto_lectura_id,
-      m.nombre as materia_nombre,
+    const r = await db.query(`SELECT p.*, m.nombre as materia_nombre, p.texto_lectura_id,
       t.texto as texto_lectura_contenido, t.titulo as texto_lectura_titulo, t.imagen as texto_lectura_imagen
       FROM preguntas p
       JOIN cuestionario_preguntas cp ON p.id = cp.pregunta_id
