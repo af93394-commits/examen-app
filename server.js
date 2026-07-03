@@ -242,6 +242,16 @@ async function initDB() {
       console.log('Datos importados desde backup');
     }
 
+    await db.query("SELECT setval('materias_id_seq', (SELECT COALESCE(MAX(id),1) FROM materias))");
+    await db.query("SELECT setval('usuarios_id_seq', (SELECT COALESCE(MAX(id),1) FROM usuarios))");
+    await db.query("SELECT setval('preguntas_id_seq', (SELECT COALESCE(MAX(id),1) FROM preguntas))");
+    await db.query("SELECT setval('cuestionarios_id_seq', (SELECT COALESCE(MAX(id),1) FROM cuestionarios))");
+    await db.query("SELECT setval('cuestionario_preguntas_id_seq', (SELECT COALESCE(MAX(id),1) FROM cuestionario_preguntas))");
+    await db.query("SELECT setval('intentos_id_seq', (SELECT COALESCE(MAX(id),1) FROM intentos))");
+    await db.query("SELECT setval('intento_respuestas_id_seq', (SELECT COALESCE(MAX(id),1) FROM intento_respuestas))");
+    await db.query("SELECT setval('badges_id_seq', (SELECT COALESCE(MAX(id),1) FROM badges))");
+    await db.query("SELECT setval('student_badges_id_seq', (SELECT COALESCE(MAX(id),1) FROM student_badges))");
+    console.log('Secuencias sincronizadas');
     console.log('PostgreSQL conectado y tablas creadas');
   } catch (e) {
     console.error('Error DB:', e.message);
@@ -418,6 +428,7 @@ app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
   try {
     const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, texto_lectura, cuestionario_id } = req.body;
     if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
+    await db.query("SELECT setval('preguntas_id_seq', (SELECT COALESCE(MAX(id),1) FROM preguntas))");
     let imagen = null, imgA = null, imgB = null, imgC = null, imgD = null;
     if (req.files && req.files['imagen']) imagen = await uploadToCloudinary(req.files['imagen'][0].buffer, 'examen/preguntas');
     if (req.files && req.files['imagen_opcion_a']) imgA = await uploadToCloudinary(req.files['imagen_opcion_a'][0].buffer, 'examen/opciones');
@@ -432,7 +443,13 @@ app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
       await db.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3)', [cuestionario_id, preguntaId, maxOrd.rows[0].next]);
     }
     res.json({ id: preguntaId, message: 'Pregunta creada' + (cuestionario_id ? ' y asociada al cuestionario' : '') });
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    if (e.message && e.message.includes('duplicate key')) {
+      await db.query("SELECT setval('preguntas_id_seq', (SELECT COALESCE(MAX(id),1) FROM preguntas))");
+      return res.status(500).json({ error: 'Secuencia reiniciada. Intente guardar de nuevo.' });
+    }
+    res.status(500).json({ error: e.message });
+  }
 });
 app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => {
   try {
