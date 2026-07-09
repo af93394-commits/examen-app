@@ -9,3 +9,12 @@ uploads/*
 !uploads/.gitkeep
 .env
 insert_batch.js
+backup_data.json
+import.sql
+import_data.js
+gen_sql.js
+preguntas_lectura.html
+preguntas_sociales.html
+respaldo_sincronizado/
+*.db
+*.sqlite

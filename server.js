@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
@@ -8,6 +9,8 @@ const PgSession = require('connect-pg-simple')(session);
 const multer = require('multer');
 const bcrypt = require('bcryptjs');
 const cloudinary = require('cloudinary').v2;
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -16,10 +19,60 @@ const fs = require('fs');
 const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
+// ============ SECURITY HEADERS ============
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:", "https://res.cloudinary.com"],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"]
+    }
+  },
+  crossOriginEmbedderPolicy: false
+}));
+
+// Rate limiting general
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: { error: 'Demasiadas peticiones. Intenta de nuevo en 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// Rate limiting estricto para login (anti brute force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 8,
+  message: { error: 'Demasiados intentos de login. Espera 15 minutos.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.ip + ':' + (req.body.usuario || 'unknown')
+});
+
+// Rate limiting para API general
+const apiLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 60,
+  message: { error: 'Límite de peticiones alcanzado.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+app.use(generalLimiter);
+
+if (!process.env.CLOUD_NAME || !process.env.CLOUD_API_KEY || !process.env.CLOUD_API_SECRET) {
+  console.error('ADVERTENCIA: Variables CLOUD_NAME, CLOUD_API_KEY, CLOUD_API_SECRET no configuradas');
+}
 cloudinary.config({
-  cloud_name: process.env.CLOUD_NAME || 'dqr6zgmed',
-  api_key: process.env.CLOUD_API_KEY || '511682233551561',
-  api_secret: process.env.CLOUD_API_SECRET || 'LT6349_n6nTFP4x3L7rBMf2T_VU'
+  cloud_name: process.env.CLOUD_NAME,
+  api_key: process.env.CLOUD_API_KEY,
+  api_secret: process.env.CLOUD_API_SECRET
 });
 
 function uploadToCloudinary(buffer, folder) {
@@ -259,19 +312,58 @@ async function initDB() {
 }
 initDB();
 
-app.use(cors());
-app.use(bodyParser.json({ limit: '50mb' }));
-app.use(bodyParser.urlencoded({ extended: true, limit: '50mb' }));
+// ============ CORS CONFIGURADO ============
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',')
+  : ['http://localhost:3000'];
+
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('Origen no permitido por CORS'));
+    }
+  },
+  credentials: true
+}));
+
+app.use(bodyParser.json({ limit: '10mb' }));
+app.use(bodyParser.urlencoded({ extended: true, limit: '10mb' }));
+
+// Sanitización básica de inputs
+app.use((req, res, next) => {
+  if (req.body) {
+    for (const key in req.body) {
+      if (typeof req.body[key] === 'string') {
+        req.body[key] = req.body[key].replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+      }
+    }
+  }
+  next();
+});
+
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
+// ============ SESSION SEGURA ============
+const isProduction = process.env.NODE_ENV === 'production';
 app.use(session({
   store: new PgSession({ pool: db, tableName: 'user_sessions' }),
-  secret: process.env.SESSION_SECRET || 'icfes-cuestionarios-secret-2024',
+  secret: process.env.SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000, secure: false }
+  cookie: {
+    maxAge: 24 * 60 * 60 * 1000,
+    secure: isProduction,
+    httpOnly: true,
+    sameSite: isProduction ? 'strict' : 'lax'
+  }
 }));
+
+if (!process.env.SESSION_SECRET) {
+  console.error('ADVERTENCIA: SESSION_SECRET no está configurado. Usa una cadena larga y aleatoria.');
+}
 
 const storage = multer.memoryStorage();
 const upload = multer({
@@ -296,7 +388,7 @@ function requireAdmin(req, res, next) {
 }
 
 // ============ AUTH ============
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     const { usuario, password } = req.body;
     if (!usuario || !password) return res.status(400).json({ error: 'Usuario y password requeridos' });
@@ -314,19 +406,19 @@ app.get('/api/sesion', (req, res) => {
 });
 
 // ============ MATERIAS ============
-app.get('/api/materias', requireAuth, async (req, res) => {
+app.get('/api/materias', requireAuth, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('SELECT * FROM materias WHERE activo = 1 ORDER BY nombre');
     res.json({ materias: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/materias/todas', requireAdmin, async (req, res) => {
+app.get('/api/materias/todas', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('SELECT * FROM materias ORDER BY nombre');
     res.json({ materias: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/materias', requireAdmin, async (req, res) => {
+app.post('/api/materias', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { nombre, descripcion } = req.body;
     if (!nombre) return res.status(400).json({ error: 'Nombre requerido' });
@@ -337,7 +429,7 @@ app.post('/api/materias', requireAdmin, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.put('/api/materias/:id', requireAdmin, async (req, res) => {
+app.put('/api/materias/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { nombre, descripcion, activo } = req.body;
     const r = await db.query('UPDATE materias SET nombre=$1, descripcion=$2, activo=$3 WHERE id=$4', [nombre, descripcion, activo, req.params.id]);
@@ -345,7 +437,7 @@ app.put('/api/materias/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Materia actualizada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/materias/:id', requireAdmin, async (req, res) => {
+app.delete('/api/materias/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('DELETE FROM materias WHERE id = $1', [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
@@ -354,13 +446,13 @@ app.delete('/api/materias/:id', requireAdmin, async (req, res) => {
 });
 
 // ============ USUARIOS ============
-app.get('/api/usuarios', requireAdmin, async (req, res) => {
+app.get('/api/usuarios', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('SELECT id, usuario, nombre_completo, rol, activo, creado_en FROM usuarios ORDER BY id');
     res.json({ usuarios: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/usuarios', requireAdmin, async (req, res) => {
+app.post('/api/usuarios', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { usuario, password, nombre_completo, rol } = req.body;
     if (!usuario || !password || !nombre_completo) return res.status(400).json({ error: 'Todos los campos son requeridos' });
@@ -372,7 +464,7 @@ app.post('/api/usuarios', requireAdmin, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.put('/api/usuarios/:id', requireAdmin, async (req, res) => {
+app.put('/api/usuarios/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { id } = req.params;
     const { nombre_completo, rol, activo, password } = req.body;
@@ -384,7 +476,7 @@ app.put('/api/usuarios/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Usuario actualizado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/usuarios/:id', requireAdmin, async (req, res) => {
+app.delete('/api/usuarios/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('DELETE FROM usuarios WHERE id = $1 AND rol != $2', [req.params.id, 'admin']);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Usuario no encontrado o es admin' });
@@ -393,7 +485,7 @@ app.delete('/api/usuarios/:id', requireAdmin, async (req, res) => {
 });
 
 // ============ PREGUNTAS ============
-app.get('/api/preguntas', requireAuth, async (req, res) => {
+app.get('/api/preguntas', requireAuth, apiLimiter, async (req, res) => {
   try {
     const { materia_id, page = 1, limit = 50, search } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
@@ -424,7 +516,7 @@ const uploadPregunta = upload.fields([
   { name: 'imagen_opcion_d', maxCount: 1 }
 ]);
 
-app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
+app.post('/api/preguntas', requireAdmin, apiLimiter, uploadPregunta, async (req, res) => {
   try {
     const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, texto_lectura, cuestionario_id } = req.body;
     if (!texto || !opcion_a || !opcion_b || !opcion_c || !opcion_d || !respuesta_correcta) return res.status(400).json({ error: 'Todos los campos son requeridos' });
@@ -451,7 +543,7 @@ app.post('/api/preguntas', requireAdmin, uploadPregunta, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => {
+app.put('/api/preguntas/:id', requireAdmin, apiLimiter, uploadPregunta, async (req, res) => {
   try {
     const { id } = req.params;
     const { texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, imagen_existente, materia_id, texto_lectura,
@@ -472,7 +564,7 @@ app.put('/api/preguntas/:id', requireAdmin, uploadPregunta, async (req, res) => 
     res.json({ message: 'Pregunta actualizada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/preguntas/:id', requireAdmin, async (req, res) => {
+app.delete('/api/preguntas/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('DELETE FROM preguntas WHERE id = $1', [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
@@ -483,13 +575,13 @@ app.delete('/api/preguntas/:id', requireAdmin, async (req, res) => {
 // ============ TEXTOS DE LECTURA ============
 const uploadTexto = upload.fields([{ name: 'imagen', maxCount: 1 }]);
 
-app.get('/api/cuestionarios/:id/textos', requireAuth, async (req, res) => {
+app.get('/api/cuestionarios/:id/textos', requireAuth, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('SELECT * FROM textos_lectura WHERE cuestionario_id = $1 ORDER BY orden, id', [req.params.id]);
     res.json({ textos: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/cuestionarios/:id/textos', requireAdmin, uploadTexto, async (req, res) => {
+app.post('/api/cuestionarios/:id/textos', requireAdmin, apiLimiter, uploadTexto, async (req, res) => {
   try {
     const { titulo, texto, orden, imagen_existente } = req.body;
     if (!titulo || !texto) return res.status(400).json({ error: 'Titulo y texto requeridos' });
@@ -500,7 +592,7 @@ app.post('/api/cuestionarios/:id/textos', requireAdmin, uploadTexto, async (req,
     res.json({ id: r.rows[0].id, message: 'Texto creado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/textos/:id', requireAdmin, uploadTexto, async (req, res) => {
+app.put('/api/textos/:id', requireAdmin, apiLimiter, uploadTexto, async (req, res) => {
   try {
     const { titulo, texto, orden, imagen_existente } = req.body;
     let imagen = imagen_existente || null;
@@ -511,7 +603,7 @@ app.put('/api/textos/:id', requireAdmin, uploadTexto, async (req, res) => {
     res.json({ message: 'Texto actualizado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/textos/:id', requireAdmin, async (req, res) => {
+app.delete('/api/textos/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     await db.query('UPDATE preguntas SET texto_lectura_id = NULL WHERE texto_lectura_id = $1', [req.params.id]);
     const r = await db.query('DELETE FROM textos_lectura WHERE id = $1', [req.params.id]);
@@ -519,7 +611,7 @@ app.delete('/api/textos/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Texto eliminado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/preguntas/:id/asignar-texto', requireAdmin, async (req, res) => {
+app.put('/api/preguntas/:id/asignar-texto', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { texto_lectura_id } = req.body;
     const r = await db.query('UPDATE preguntas SET texto_lectura_id = $1 WHERE id = $2', [texto_lectura_id || null, req.params.id]);
@@ -529,7 +621,7 @@ app.put('/api/preguntas/:id/asignar-texto', requireAdmin, async (req, res) => {
 });
 
 // ============ CUESTIONARIOS ============
-app.get('/api/cuestionarios', requireAuth, async (req, res) => {
+app.get('/api/cuestionarios', requireAuth, apiLimiter, async (req, res) => {
   try {
     const isAdmin = req.session.user.rol === 'admin';
     const { materia_id } = req.query;
@@ -546,7 +638,7 @@ app.get('/api/cuestionarios', requireAuth, async (req, res) => {
     res.json({ cuestionarios: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/cuestionarios', requireAdmin, async (req, res) => {
+app.post('/api/cuestionarios', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { titulo, descripcion, tiempo_limite, materia_id } = req.body;
     if (!titulo) return res.status(400).json({ error: 'Titulo requerido' });
@@ -555,7 +647,7 @@ app.post('/api/cuestionarios', requireAdmin, async (req, res) => {
     res.json({ id: r.rows[0].id, message: 'Cuestionario creado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/cuestionarios/:id', requireAdmin, async (req, res) => {
+app.put('/api/cuestionarios/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { titulo, descripcion, tiempo_limite, activo, materia_id } = req.body;
     const r = await db.query('UPDATE cuestionarios SET titulo=$1, descripcion=$2, tiempo_limite=$3, activo=$4, materia_id=$5 WHERE id=$6',
@@ -564,7 +656,7 @@ app.put('/api/cuestionarios/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Actualizado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/cuestionarios/:id/publicar', requireAdmin, async (req, res) => {
+app.put('/api/cuestionarios/:id/publicar', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { activo } = req.body;
     const r = await db.query('UPDATE cuestionarios SET activo=$1 WHERE id=$2', [activo ? 1 : 0, req.params.id]);
@@ -572,13 +664,13 @@ app.put('/api/cuestionarios/:id/publicar', requireAdmin, async (req, res) => {
     res.json({ message: activo ? 'Publicado' : 'Despublicado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/cuestionarios/:id', requireAdmin, async (req, res) => {
+app.delete('/api/cuestionarios/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     await db.query('DELETE FROM cuestionarios WHERE id = $1', [req.params.id]);
     res.json({ message: 'Eliminado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/cuestionarios/:id/preguntas', requireAdmin, async (req, res) => {
+app.post('/api/cuestionarios/:id/preguntas', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { pregunta_id, orden } = req.body;
     const r = await db.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3) RETURNING id',
@@ -586,13 +678,13 @@ app.post('/api/cuestionarios/:id/preguntas', requireAdmin, async (req, res) => {
     res.json({ id: r.rows[0].id, message: 'Pregunta agregada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/cuestionarios/:cid/preguntas/:pid', requireAdmin, async (req, res) => {
+app.delete('/api/cuestionarios/:cid/preguntas/:pid', requireAdmin, apiLimiter, async (req, res) => {
   try {
     await db.query('DELETE FROM cuestionario_preguntas WHERE cuestionario_id = $1 AND pregunta_id = $2', [req.params.cid, req.params.pid]);
     res.json({ message: 'Pregunta removida' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/cuestionarios/:id/preguntas', requireAuth, async (req, res) => {
+app.get('/api/cuestionarios/:id/preguntas', requireAuth, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(`SELECT p.*, m.nombre as materia_nombre, p.texto_lectura_id,
       t.texto as texto_lectura_contenido, t.titulo as texto_lectura_titulo, t.imagen as texto_lectura_imagen
@@ -606,7 +698,7 @@ app.get('/api/cuestionarios/:id/preguntas', requireAuth, async (req, res) => {
 });
 
 // ============ INTENTOS ============
-app.post('/api/intentos', requireAuth, async (req, res) => {
+app.post('/api/intentos', requireAuth, apiLimiter, async (req, res) => {
   try {
     const { cuestionario_id } = req.body;
     const total = await db.query('SELECT COUNT(*) as total FROM cuestionario_preguntas WHERE cuestionario_id = $1', [cuestionario_id]);
@@ -615,7 +707,7 @@ app.post('/api/intentos', requireAuth, async (req, res) => {
     res.json({ id: r.rows[0].id, total: parseInt(total.rows[0].total) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/intentos/:id/responder', requireAuth, async (req, res) => {
+app.post('/api/intentos/:id/responder', requireAuth, apiLimiter, async (req, res) => {
   try {
     const { pregunta_id, respuesta } = req.body;
     const p = await db.query('SELECT respuesta_correcta FROM preguntas WHERE id = $1', [pregunta_id]);
@@ -631,7 +723,7 @@ app.post('/api/intentos/:id/responder', requireAuth, async (req, res) => {
     res.json({ es_correcta: esCorrecta, correcta: p.rows[0].respuesta_correcta });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/intentos/:id/finalizar', requireAuth, async (req, res) => {
+app.put('/api/intentos/:id/finalizar', requireAuth, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(
       `SELECT COUNT(*) as correctas
@@ -644,7 +736,7 @@ app.put('/api/intentos/:id/finalizar', requireAuth, async (req, res) => {
     res.json({ puntuacion: parseInt(r.rows[0].correctas), nuevasInsignias });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/intentos/:id/resultados', requireAuth, async (req, res) => {
+app.get('/api/intentos/:id/resultados', requireAuth, apiLimiter, async (req, res) => {
   try {
     const resp = await db.query(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen, p.imagen_opcion_a, p.imagen_opcion_b, p.imagen_opcion_c, p.imagen_opcion_d
       FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = $1`, [req.params.id]);
@@ -652,7 +744,7 @@ app.get('/api/intentos/:id/resultados', requireAuth, async (req, res) => {
     res.json({ respuestas: resp.rows, intento: intento.rows[0] });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/mis-intentos', requireAuth, async (req, res) => {
+app.get('/api/mis-intentos', requireAuth, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(`SELECT i.*, COALESCE(c.titulo, 'Cuestionario eliminado') as cuestionario_titulo FROM intentos i
       LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
@@ -662,7 +754,7 @@ app.get('/api/mis-intentos', requireAuth, async (req, res) => {
 });
 
 // ============ INFORMES ============
-app.get('/api/admin/estudiantes-con-intentos', requireAdmin, async (req, res) => {
+app.get('/api/admin/estudiantes-con-intentos', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(`SELECT u.id, u.usuario, u.nombre_completo,
       (SELECT COUNT(*) FROM intentos WHERE usuario_id = u.id) as total_intentos,
@@ -672,7 +764,7 @@ app.get('/api/admin/estudiantes-con-intentos', requireAdmin, async (req, res) =>
     res.json({ estudiantes: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/admin/usuarios/:id/intentos', requireAdmin, async (req, res) => {
+app.get('/api/admin/usuarios/:id/intentos', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(`SELECT i.*, c.titulo as cuestionario_titulo, c.materia_id,
       COALESCE(m.nombre, 'Cuestionario eliminado') as materia_nombre,
@@ -685,7 +777,7 @@ app.get('/api/admin/usuarios/:id/intentos', requireAdmin, async (req, res) => {
     res.json({ intentos: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/admin/intentos/:id/detalle', requireAdmin, async (req, res) => {
+app.get('/api/admin/intentos/:id/detalle', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const resp = await db.query(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen
       FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = $1 ORDER BY ir.id`, [req.params.id]);
@@ -701,7 +793,7 @@ app.get('/api/admin/intentos/:id/detalle', requireAdmin, async (req, res) => {
 });
 
 // ============ STATS ESTUDIANTE ============
-app.get('/api/estudiante/progreso', requireAuth, async (req, res) => {
+app.get('/api/estudiante/progreso', requireAuth, apiLimiter, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const materias = await db.query(`SELECT m.id, m.nombre,
@@ -730,7 +822,7 @@ app.get('/api/estudiante/progreso', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/estudiante/pendientes', requireAuth, async (req, res) => {
+app.get('/api/estudiante/pendientes', requireAuth, apiLimiter, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const cuestionarios = await db.query(`SELECT c.id, c.titulo, c.tiempo_limite, c.materia_id,
@@ -745,7 +837,7 @@ app.get('/api/estudiante/pendientes', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/estudiante/historico', requireAuth, async (req, res) => {
+app.get('/api/estudiante/historico', requireAuth, apiLimiter, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const historico = await db.query(`SELECT i.id, i.cuestionario_id, c.titulo as cuestionario_titulo,
@@ -763,7 +855,7 @@ app.get('/api/estudiante/historico', requireAuth, async (req, res) => {
 });
 
 // ============ STATS ============
-app.get('/api/stats', requireAdmin, async (req, res) => {
+app.get('/api/stats', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const stats = {};
     const est = await db.query('SELECT COUNT(*) as total FROM usuarios WHERE rol=$1', ['estudiante']);
@@ -779,7 +871,7 @@ app.get('/api/stats', requireAdmin, async (req, res) => {
 });
 
 // ============ INSIGNIAS ============
-app.get('/api/insignias', requireAuth, async (req, res) => {
+app.get('/api/insignias', requireAuth, apiLimiter, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const badgesRes = await db.query('SELECT * FROM badges WHERE activo = 1 ORDER BY categoria, orden_display');
@@ -796,7 +888,7 @@ app.get('/api/insignias', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/insignias/mis', requireAuth, async (req, res) => {
+app.get('/api/insignias/mis', requireAuth, apiLimiter, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const r = await db.query(`
@@ -810,7 +902,7 @@ app.get('/api/insignias/mis', requireAuth, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-app.get('/api/insignias/progreso', requireAuth, async (req, res) => {
+app.get('/api/insignias/progreso', requireAuth, apiLimiter, async (req, res) => {
   try {
     const userId = req.session.user.id;
     const completados = await db.query('SELECT COUNT(*) as t FROM intentos WHERE usuario_id=$1 AND completado=1', [userId]);
@@ -821,7 +913,7 @@ app.get('/api/insignias/progreso', requireAuth, async (req, res) => {
 });
 
 // ============ ADMIN BADGES ============
-app.get('/api/admin/badges', requireAdmin, async (req, res) => {
+app.get('/api/admin/badges', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(`SELECT b.*,
       (SELECT COUNT(*) FROM student_badges sb WHERE sb.badge_id = b.id) as total_otorgadas
@@ -829,7 +921,7 @@ app.get('/api/admin/badges', requireAdmin, async (req, res) => {
     res.json({ badges: r.rows });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/admin/badges', requireAdmin, async (req, res) => {
+app.post('/api/admin/badges', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { clave, nombre, descripcion, categoria, rareza, puntos, orden_display } = req.body;
     if (!clave || !nombre || !descripcion) return res.status(400).json({ error: 'Clave, nombre y descripcion requeridos' });
@@ -841,7 +933,7 @@ app.post('/api/admin/badges', requireAdmin, async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
-app.put('/api/admin/badges/:id', requireAdmin, async (req, res) => {
+app.put('/api/admin/badges/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { nombre, descripcion, categoria, rareza, puntos, orden_display, activo } = req.body;
     const r = await db.query('UPDATE badges SET nombre=$1, descripcion=$2, categoria=$3, rareza=$4, puntos=$5, orden_display=$6, activo=$7 WHERE id=$8',
@@ -850,7 +942,7 @@ app.put('/api/admin/badges/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Insignia actualizada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/admin/badges/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/badges/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     await db.query('DELETE FROM student_badges WHERE badge_id = $1', [req.params.id]);
     const r = await db.query('DELETE FROM badges WHERE id = $1', [req.params.id]);
@@ -858,14 +950,14 @@ app.delete('/api/admin/badges/:id', requireAdmin, async (req, res) => {
     res.json({ message: 'Insignia eliminada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.put('/api/admin/badges/:id/toggle', requireAdmin, async (req, res) => {
+app.put('/api/admin/badges/:id/toggle', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('UPDATE badges SET activo = CASE WHEN activo=1 THEN 0 ELSE 1 END WHERE id=$1 RETURNING activo', [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
     res.json({ activo: r.rows[0].activo, message: r.rows[0].activo ? 'Activada' : 'Desactivada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.post('/api/admin/badges/otorgar', requireAdmin, async (req, res) => {
+app.post('/api/admin/badges/otorgar', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { usuario_id, badge_id } = req.body;
     if (!usuario_id || !badge_id) return res.status(400).json({ error: 'Estudiante y insignia requeridos' });
@@ -877,14 +969,14 @@ app.post('/api/admin/badges/otorgar', requireAdmin, async (req, res) => {
     res.json({ message: 'Insignia "' + b.rows[0].nombre + '" otorgada al estudiante' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.delete('/api/admin/student-badges/:id', requireAdmin, async (req, res) => {
+app.delete('/api/admin/student-badges/:id', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const r = await db.query('DELETE FROM student_badges WHERE id = $1', [req.params.id]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'No encontrada' });
     res.json({ message: 'Otorgacion eliminada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
-app.get('/api/admin/student-badges', requireAdmin, async (req, res) => {
+app.get('/api/admin/student-badges', requireAdmin, apiLimiter, async (req, res) => {
   try {
     const { usuario_id } = req.query;
     let sql = `SELECT sb.*, b.nombre as badge_nombre, b.clave, b.categoria, b.rareza, b.puntos,
@@ -901,7 +993,7 @@ app.get('/api/admin/student-badges', requireAdmin, async (req, res) => {
 });
 
 // ============ URL PUBLICA ============
-app.get('/api/url-publica', requireAdmin, (req, res) => {
+app.get('/api/url-publica', requireAdmin, apiLimiter, (req, res) => {
   try {
     const url = fs.readFileSync(path.join(__dirname, 'url_actual.txt'), 'utf8').trim();
     res.json({ url });
