@@ -39,7 +39,7 @@ app.use(helmet({
 // Rate limiting general
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 500,
   message: { error: 'Demasiadas peticiones. Intenta de nuevo en 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -48,7 +48,7 @@ const generalLimiter = rateLimit({
 // Rate limiting estricto para login (anti brute force)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 8,
+  max: 15,
   message: { error: 'Demasiados intentos de login. Espera 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -58,7 +58,7 @@ const loginLimiter = rateLimit({
 // Rate limiting para API general
 const apiLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
-  max: 60,
+  max: 120,
   message: { error: 'Límite de peticiones alcanzado.' },
   standardHeaders: true,
   legacyHeaders: false
@@ -313,18 +313,8 @@ async function initDB() {
 initDB();
 
 // ============ CORS CONFIGURADO ============
-const allowedOrigins = process.env.ALLOWED_ORIGINS
-  ? process.env.ALLOWED_ORIGINS.split(',')
-  : ['http://localhost:3000'];
-
 app.use(cors({
-  origin: function(origin, callback) {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, true);
-    } else {
-      callback(new Error('Origen no permitido por CORS'));
-    }
-  },
+  origin: true,
   credentials: true
 }));
 
@@ -350,14 +340,14 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 const isProduction = process.env.NODE_ENV === 'production';
 app.use(session({
   store: new PgSession({ pool: db, tableName: 'user_sessions' }),
-  secret: process.env.SESSION_SECRET,
+  secret: process.env.SESSION_SECRET || 'fallback-secret-change-me',
   resave: false,
   saveUninitialized: false,
   cookie: {
     maxAge: 24 * 60 * 60 * 1000,
-    secure: isProduction,
+    secure: false,
     httpOnly: true,
-    sameSite: isProduction ? 'strict' : 'lax'
+    sameSite: 'lax'
   }
 }));
 
