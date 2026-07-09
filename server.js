@@ -25,35 +25,38 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false
 }));
 
-// Rate limiting general
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 500,
-  message: { error: 'Demasiadas peticiones. Intenta de nuevo en 15 minutos.' },
-  standardHeaders: true,
-  legacyHeaders: false
-});
-
 // Rate limiting estricto para login (anti brute force)
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 15,
+  max: 20,
   message: { error: 'Demasiados intentos de login. Espera 15 minutos.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip + ':' + (req.body.usuario || 'unknown')
+  keyGenerator: (req) => 'global'
 });
 
-// Rate limiting para API general
-const apiLimiter = rateLimit({
+// Rate limiting para endpoints sensibles (admin, preguntas CRUD)
+const adminLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000,
+  max: 200,
+  message: { error: 'Límite de peticiones alcanzado.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => 'global'
+});
+
+// Rate limiting para endpoints de estudiante
+const studentLimiter = rateLimit({
   windowMs: 1 * 60 * 1000,
   max: 120,
   message: { error: 'Límite de peticiones alcanzado.' },
   standardHeaders: true,
-  legacyHeaders: false
+  legacyHeaders: false,
+  keyGenerator: (req) => 'global'
 });
 
-app.use(generalLimiter);
+// Alias para compatibilidad - usar adminLimiter para todos los endpoints
+const apiLimiter = adminLimiter;
 
 if (!process.env.CLOUD_NAME || !process.env.CLOUD_API_KEY || !process.env.CLOUD_API_SECRET) {
   console.error('ADVERTENCIA: Variables CLOUD_NAME, CLOUD_API_KEY, CLOUD_API_SECRET no configuradas');
