@@ -26,6 +26,10 @@ module.exports = function(db) {
             'INSERT INTO student_badges (usuario_id, badge_id, intento_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
             [usuarioId, badge.id, intentoId]
           );
+          await db.query(
+            'INSERT INTO notificaciones (usuario_id, badge_id, titulo, mensaje) VALUES ($1, $2, $3, $4)',
+            [usuarioId, badge.id, 'Nueva insignia ganada', '¡Has ganado la insignia "' + badge.nombre + '"!']
+          );
           newlyEarned.push({ clave: badge.clave, nombre: badge.nombre, descripcion: badge.descripcion });
         }
       }

@@ -18,8 +18,8 @@ Plataforma de examenes/cuestionarios ICFES para estudiantes colombianos.
 5. Las credenciales van en .env (local) y en variables de entorno de Render (produccion)
 
 ## Base de datos
-- **Local:** SQLite (examen.db) para desarrollo
-- **Cloud:** PostgreSQL en Render para produccion
+- **Local:** PostgreSQL - usa la DATABASE_URL del .env (ahora apunta a Neon)
+- **Cloud:** PostgreSQL en Neon (proyecto "aplicacion de examen"), deploy en Render
 - **Cuestionario activo:** ID 9 "MATEMATICAS 3-Z1-2" con 36 preguntas
 
 ## Reglas estrictas
@@ -47,7 +47,7 @@ Plataforma de examenes/cuestionarios ICFES para estudiantes colombianos.
 - `backup_data.json` - Backup JSON de los datos
 
 ## Variables de entorno
-- DATABASE_URL (PostgreSQL)
+- DATABASE_URL (Neon - conexion directa, NO usar -pooler: enruta a compute vacio)
 - SESSION_SECRET (clave aleatoria larga)
 - CLOUD_NAME, CLOUD_API_KEY, CLOUD_API_SECRET (Cloudinary)
 - ALLOWED_ORIGINS (CORS)

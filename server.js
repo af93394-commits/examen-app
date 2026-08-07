@@ -179,6 +179,16 @@ async function initDB() {
     )`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_sb_usuario ON student_badges(usuario_id)`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_sb_usuario_badge ON student_badges(usuario_id, badge_id)`);
+    await db.query(`CREATE TABLE IF NOT EXISTS notificaciones (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+      badge_id INTEGER REFERENCES badges(id) ON DELETE SET NULL,
+      titulo TEXT NOT NULL,
+      mensaje TEXT,
+      leida INTEGER DEFAULT 0,
+      creado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_notif_usuario ON notificaciones(usuario_id)`);
 
     const badgeCount = await db.query('SELECT COUNT(*) as t FROM badges');
     if (parseInt(badgeCount.rows[0].t) === 0) {
@@ -894,6 +904,30 @@ app.get('/api/insignias/progreso', requireAuth, apiLimiter, async (req, res) => 
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// ============ NOTIFICACIONES ============
+app.get('/api/notificaciones', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const r = await db.query(`SELECT n.*, b.nombre as badge_nombre, b.puntos, b.rareza
+      FROM notificaciones n
+      LEFT JOIN badges b ON n.badge_id = b.id
+      WHERE n.usuario_id = $1
+      ORDER BY n.creado_en DESC, n.id DESC LIMIT 50`, [req.session.user.id]);
+    res.json({ notificaciones: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.get('/api/notificaciones/no-leidas', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const r = await db.query('SELECT COUNT(*) as t FROM notificaciones WHERE usuario_id=$1 AND leida=0', [req.session.user.id]);
+    res.json({ noLeidas: parseInt(r.rows[0].t) });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+app.put('/api/notificaciones/marcar-leidas', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    await db.query('UPDATE notificaciones SET leida=1 WHERE usuario_id=$1', [req.session.user.id]);
+    res.json({ message: 'Notificaciones marcadas como leidas' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // ============ ADMIN BADGES ============
 app.get('/api/admin/badges', requireAdmin, apiLimiter, async (req, res) => {
   try {
@@ -948,6 +982,8 @@ app.post('/api/admin/badges/otorgar', requireAdmin, apiLimiter, async (req, res)
     const b = await db.query('SELECT id, nombre FROM badges WHERE id=$1', [badge_id]);
     if (b.rows.length === 0) return res.status(404).json({ error: 'Insignia no encontrada' });
     await db.query('INSERT INTO student_badges (usuario_id, badge_id) VALUES ($1,$2) ON CONFLICT DO NOTHING', [usuario_id, badge_id]);
+    await db.query('INSERT INTO notificaciones (usuario_id, badge_id, titulo, mensaje) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING',
+      [usuario_id, badge_id, 'Nueva insignia ganada', '¡Tu instructor te otorgó la insignia "' + b.rows[0].nombre + '"!']);
     res.json({ message: 'Insignia "' + b.rows[0].nombre + '" otorgada al estudiante' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
