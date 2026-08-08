@@ -55,6 +55,7 @@ body{margin:0;background:#f1f5f9}
 <script>
 var params=new URLSearchParams(window.location.search);
 var simulacroId=params.get('simulacro');
+var VERSION='3';
 var bloques=[], simulActual=null, bloqueActual=null, preguntas=[], respuestas={};
 var indexActual=0, timerInterval=null, ocupado=false;
 
@@ -67,8 +68,19 @@ function debug(msg){
 }
 function banner(msg){
   var b=document.getElementById('banner');
+  if(!b){
+    b=document.createElement('div');
+    b.id='banner';
+    b.style.cssText='position:fixed;top:0;left:0;right:0;z-index:5000;background:#dc2626;color:#fff;padding:12px 20px;font-size:14px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.2)';
+    document.body.insertBefore(b,document.body.firstChild);
+  }
   b.style.display='block';
   b.innerHTML='&#9888; '+msg+' <a onclick="location.reload()">Reintentar</a> <a onclick="window.location.href=\'/student/simulacro-config.html\'">Volver</a>';
+}
+function el(id){
+  var e=document.getElementById(id);
+  if(!e)banner('Pagina desactualizada: falta el elemento #'+id+'. Pulsa Ctrl+F5 para recargar sin cache.');
+  return e;
 }
 window.addEventListener('error',function(e){debug('JS: '+(e.message||'error'));});
 window.addEventListener('unhandledrejection',function(e){
@@ -76,11 +88,34 @@ window.addEventListener('unhandledrejection',function(e){
   debug('Promesa: '+(r&&r.message?r.message:(r?String(r):'rechazada')));
 });
 
-if(!simulacroId)window.location.href='/student/simulacro-config.html';
+if(!simulacroId){
+  window.location.href='/student/simulacro-config.html';
+} else if(params.get('v')!==VERSION){
+  window.location.replace('/student/simulacro-presentar.html?simulacro='+simulacroId+'&v='+VERSION);
+}
 
 function fetchJson(url,opts){
   opts=opts||{};
   opts.cache='no-store';
+  var timeoutMs=opts.timeoutMs||15000;
+  if(typeof AbortController!=='undefined'){
+    var ac=new AbortController();
+    var to=setTimeout(function(){ac.abort()},timeoutMs);
+    opts.signal=ac.signal;
+    return fetch(url,opts).then(function(r){
+      clearTimeout(to);
+      return r.text().then(function(txt){
+        var d=null;
+        try{d=JSON.parse(txt)}catch(e){d={error:'Respuesta no JSON (HTTP '+r.status+')'};}
+        debug(url.replace('/api/','')+' -> '+r.status);
+        return {ok:r.ok,status:r.status,data:d};
+      });
+    }).catch(function(e){
+      clearTimeout(to);
+      if(e&&e.name==='AbortError')throw new Error('Timeout: el servidor no respondio en '+Math.round(timeoutMs/1000)+'s');
+      throw e;
+    });
+  }
   return fetch(url,opts).then(function(r){
     return r.text().then(function(txt){
       var d=null;
@@ -99,7 +134,8 @@ fetch('/api/sesion',{cache:'no-store'}).then(function(r){if(!r.ok)throw 0;return
 function cargarEstado(intento){
   intento=intento||0;
   if(intento===0)debug('Estado...');
-  fetchJson('/api/simulacros/'+simulacroId).then(function(j){
+  var to=intento===0?90000:20000;
+  fetchJson('/api/simulacros/'+simulacroId,{timeoutMs:to}).then(function(j){
     if(!j.ok){
       var msj=(j.data&&j.data.error)||('HTTP '+j.status);
       var transitorio=(j.status>=500||j.status===529||msj.indexOf('Respuesta no JSON')===0);
@@ -135,8 +171,10 @@ function procesarBloque(){
   bloques.forEach(function(b){if(b.orden===simulActual.bloque_actual)bloqueActual=b;});
   if(!bloqueActual)bloqueActual=bloques[0];
 
-  document.getElementById('areaNombre').textContent=bloqueActual.materia_nombre;
-  document.getElementById('areaSub').textContent='Bloque '+(bloqueActual.orden+1)+' de '+bloques.length+' ('+bloqueActual.total_preguntas+' preguntas)';
+  var an=el('areaNombre');
+  var as=el('areaSub');
+  if(an)an.textContent=bloqueActual.materia_nombre;
+  if(as)as.textContent='Bloque '+(bloqueActual.orden+1)+' de '+bloques.length+' ('+bloqueActual.total_preguntas+' preguntas)';
 
   if(bloqueActual.finalizado_en){
     avanzarSiguiente();
@@ -164,8 +202,9 @@ function procesarBloque(){
 }
 
 function cargarPreguntas(){
-  document.getElementById('areaSub').textContent='Cargando preguntas...';
-  fetchJson('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/preguntas')
+  var as=el('areaSub');
+  if(as)as.textContent='Cargando preguntas...';
+  fetchJson('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/preguntas',{timeoutMs:60000})
     .then(function(j){
       if(!j.ok){banner(j.data.error||('Error cargando preguntas (HTTP '+j.status+')'));return;}
       var d=j.data;
@@ -199,15 +238,17 @@ function iniciarTimer(segundos,iniciadoEn){
 }
 
 function pintarTiempo(seg){
-  var el=document.getElementById('quizTimer');
+  var e=el('quizTimer');
+  if(!e)return;
   var m=Math.floor(seg/60),s=seg%60;
-  el.textContent=m+':'+s.toString().padStart(2,'0');
-  el.classList.toggle('low',seg<300);
+  e.textContent=m+':'+s.toString().padStart(2,'0');
+  e.classList.toggle('low',seg<300);
 }
 
 function renderUI(){
   var p=preguntas[indexActual];
-  var cont=document.getElementById('cuerpo');
+  var cont=el('cuerpo');
+  if(!cont){banner('Elemento #cuerpo faltante - recarga con Ctrl+F5');return;}
   if(!p){banner('No hay pregunta para mostrar');return;}
   var html='<div class="pv-header">';
   html+='<span class="n-preg">Pregunta '+(indexActual+1)+' de '+preguntas.length+'</span>';
@@ -290,7 +331,8 @@ function finalizarBloque(silencioso){
         window.location.href='/student/simulacro-resultados.html?simulacro='+simulacroId;
       }else{
         simulActual.bloque_actual=simulActual.bloque_actual+1;
-        document.getElementById('cuerpo').innerHTML='<div class="cargando">Cargando siguiente bloque...</div>';
+        var cu=el('cuerpo');
+        if(cu)cu.innerHTML='<div class="cargando">Cargando siguiente bloque...</div>';
         procesarBloque();
       }
     }).catch(function(e){ocupado=false;banner('Error finalizando: '+e.message);});

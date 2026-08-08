@@ -82,7 +82,10 @@ function uploadToCloudinary(buffer, folder) {
 
 const db = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
+  ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false,
+  connectionTimeoutMillis: 15000,
+  idleTimeoutMillis: 30000,
+  max: 10
 });
 
 const badgesEngine = require('./badges')(db);
@@ -393,6 +396,16 @@ app.use((req, res, next) => {
 
 app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+app.use((req, res, next) => {
+  const timer = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({ error: 'El servidor tardó demasiado en responder. Intenta de nuevo.' });
+    }
+  }, 60000);
+  res.on('finish', () => clearTimeout(timer));
+  next();
+});
 
 // ============ SESSION SEGURA ============
 const isProduction = process.env.NODE_ENV === 'production';
