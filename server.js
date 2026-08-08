@@ -1424,7 +1424,11 @@ app.get('/api/mis-simulacros', requireAuth, apiLimiter, async (req, res) => {
       FROM simulacros si
       WHERE si.usuario_id = $1
       ORDER BY si.iniciado_en DESC LIMIT 20`, [req.session.user.id]);
-    res.json({ simulacros: r.rows });
+    const simulacros = r.rows.map(s => ({
+      ...s,
+      puntaje_global_nivel: s.puntaje_global != null ? calcularNivelDesempeno(Math.round(s.puntaje_global / 5)) : null
+    }));
+    res.json({ simulacros });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

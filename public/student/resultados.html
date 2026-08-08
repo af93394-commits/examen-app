@@ -32,6 +32,10 @@
 .motivational-msg { text-align: center; font-size: 18px; font-weight: 600; margin: 16px 0; }
 .result-card { transition: transform 0.2s; }
 .result-card:hover { transform: translateY(-2px); }
+.tabs-nav{display:flex;gap:10px;margin-bottom:22px;flex-wrap:wrap}
+.tab-btn{border:2px solid #e2e8f0;background:#fff;color:#475569;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s}
+.tab-btn:hover{border-color:#2563eb;color:#2563eb}
+.tab-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
 </style>
 </head>
 <body>
@@ -48,6 +52,10 @@
 <div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
 </div>
 <div class="main-content">
+<div class="tabs-nav">
+<button class="tab-btn" id="tabCuestionarios" onclick="irTab('cuestionarios')">&#128220; Resultados de Cuestionarios</button>
+<button class="tab-btn" id="tabSimulacros" onclick="irTab('simulacros')">&#127979; Resultados de Simulacros</button>
+</div>
 <div id="resultadoDetalle"></div>
 <div id="historial"></div>
 </div>
@@ -58,9 +66,31 @@ var intentoId = params.get('intento');
 fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
   document.getElementById('userName').textContent = d.user.nombre;
   if (d.user.rol !== 'estudiante') window.location.href = '/';
-  if (intentoId) loadResultado(intentoId);
-  else loadHistorial();
+  var tab = params.get('tab') || 'cuestionarios';
+  if (intentoId) {
+    activarTab('cuestionarios');
+    loadResultado(intentoId);
+  } else {
+    irTab(tab);
+  }
 }).catch(function() { window.location.href = '/'; });
+
+function activarTab(tab){
+  document.getElementById('tabCuestionarios').classList.toggle('active', tab === 'cuestionarios');
+  document.getElementById('tabSimulacros').classList.toggle('active', tab === 'simulacros');
+}
+
+function irTab(tab){
+  activarTab(tab);
+  var u = new URL(window.location.href);
+  u.searchParams.delete('intento');
+  u.searchParams.set('tab', tab);
+  history.replaceState(null, '', u.toString());
+  document.getElementById('resultadoDetalle').innerHTML = '';
+  document.getElementById('historial').innerHTML = '';
+  if (tab === 'simulacros') loadHistorialSimulacros();
+  else loadHistorial();
+}
 
 function loadResultado(id) {
   fetch('/api/intentos/' + id + '/resultados').then(function(r) { return r.json(); }).then(function(d) {
@@ -241,6 +271,49 @@ function loadHistorial() {
       html += '</div></div>';
       h.innerHTML += html;
     });
+  });
+}
+
+function loadHistorialSimulacros() {
+  var h = document.getElementById('historial');
+  h.innerHTML = '<div class="page-header"><h1>Resultados de Simulacros</h1></div>';
+
+  fetch('/api/mis-simulacros').then(function(r) { return r.json(); }).then(function(d) {
+    if (d.error) {
+      h.innerHTML += '<div class="card empty-state"><div class="icon">&#127979;</div><p>' + d.error + '</p></div>';
+      return;
+    }
+    if (!d.simulacros || d.simulacros.length === 0) {
+      h.innerHTML += '<div class="card empty-state"><div class="icon">&#127979;</div><p>Aun no has presentado simulacros ICFES</p>';
+      h.innerHTML += '<a href="/student/simulacro-config.html" class="btn btn-primary">&#9654; Presentar simulacro</a></div>';
+      return;
+    }
+    d.simulacros.forEach(function(s) {
+      var finalizado = s.estado === 'finalizado';
+      var html = '<div class="card">';
+      html += '<div class="card-header"><h3>&#127979; Simulacro ICFES</h3>';
+      if (finalizado && s.puntaje_global != null) {
+        html += '<span class="badge badge-active">' + s.puntaje_global + ' pts &middot; ' + (s.puntaje_global_nivel || '—') + '</span>';
+      } else {
+        html += '<span class="badge badge-inactive">En progreso</span>';
+      }
+      html += '</div>';
+
+      html += '<p style="color:#64748b">Materias: ' + s.total_bloques + '</p>';
+      html += '<p style="color:#94a3b8;font-size:12px">Iniciado: ' + s.iniciado_en + '</p>';
+      if (finalizado && s.finalizado_en) html += '<p style="color:#94a3b8;font-size:12px">Finalizado: ' + s.finalizado_en + '</p>';
+
+      html += '<div class="actions" style="margin-top:8px">';
+      if (finalizado) {
+        html += '<a href="/student/simulacro-resultados.html?simulacro=' + s.id + '" class="btn btn-sm btn-primary">&#128269; Ver Informe</a>';
+      } else {
+        html += '<a href="/student/simulacro-presentar.html?simulacro=' + s.id + '&v=5" class="btn btn-sm btn-secondary">&#9654; Continuar simulacro</a>';
+      }
+      html += '</div></div>';
+      h.innerHTML += html;
+    });
+  }).catch(function() {
+    h.innerHTML += '<div class="card empty-state"><div class="icon">&#128220;</div><p>No se pudieron cargar los simulacros</p></div>';
   });
 }
 
