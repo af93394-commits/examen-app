@@ -56,7 +56,7 @@ body{margin:0;background:#f1f5f9}
 <script>
 var params=new URLSearchParams(window.location.search);
 var simulacroId=params.get('simulacro');
-var VERSION='4';
+var VERSION='5';
 var bloques=[], simulActual=null, bloqueActual=null, preguntas=[], respuestas={};
 var indexActual=0, timerInterval=null, ocupado=false;
 
@@ -218,7 +218,7 @@ function cargarPreguntas(){
       }
       indexActual=0;
       iniciarTimer(d.tiempo_limite_segundos, d.iniciado_en);
-      renderUI();
+      renderBloque();
     }).catch(function(e){banner('Error cargando las preguntas: '+(e.message||'desconocido'));});
 }
 
@@ -246,80 +246,80 @@ function pintarTiempo(seg){
   e.classList.toggle('low',seg<300);
 }
 
-function renderUI(){
-  var p=preguntas[indexActual];
+function renderBloque(){
   var cont=el('cuerpo');
   if(!cont){banner('Elemento #cuerpo faltante - recarga con Ctrl+F5');return;}
-  if(!p){banner('No hay pregunta para mostrar');return;}
+  var respondidas=Object.keys(respuestas).length;
+  var haySiguiente=false;
+  bloques.forEach(function(b){if(b.orden===bloqueActual.orden+1)haySiguiente=true;});
+
   var html='<div class="pv-header">';
-  html+='<span class="n-preg">Pregunta '+(indexActual+1)+' de '+preguntas.length+'</span>';
-  html+='<span style="font-size:13px;color:#64748b">'+Object.keys(respuestas).length+' respondidas de '+preguntas.length+'</span>';
+  html+='<span class="n-preg"><strong>'+bloqueActual.materia_nombre+'</strong> &middot; '+preguntas.length+' preguntas de esta materia</span>';
+  html+='<span id="resumenResp" style="font-size:13px;color:#64748b">'+respondidas+' respondidas de '+preguntas.length+'</span>';
   html+='</div>';
-  html+='<div class="progress-bar"><div class="progress-fill" style="width:'+Math.round((Object.keys(respuestas).length/preguntas.length)*100)+'%"></div></div>';
+  html+='<div class="progress-bar"><div class="progress-fill" id="fillResp" style="width:'+Math.round((respondidas/preguntas.length)*100)+'%"></div></div>';
 
-  html+='<div class="question-card">';
-  if(p.texto_lectura_contenido){
-    html+='<div class="texto-lectura"><h4>&#128214; Texto de lectura</h4><p>'+p.texto_lectura_contenido+'</p>';
-    if(p.texto_lectura_imagen)html+='<img src="'+p.texto_lectura_imagen+'" style="max-width:100%;border-radius:8px;margin-top:10px;border:1px solid #e2e8f0">';
+  preguntas.forEach(function(p,i){
+    html+='<div class="question-card" style="margin-bottom:18px">';
+    if(p.texto_lectura_contenido){
+      html+='<div class="texto-lectura"><h4>&#128214; Texto de lectura</h4><p>'+p.texto_lectura_contenido+'</p>';
+      if(p.texto_lectura_imagen)html+='<img src="'+p.texto_lectura_imagen+'" style="max-width:100%;border-radius:8px;margin-top:10px;border:1px solid #e2e8f0">';
+      html+='</div>';
+    }
+    html+='<h3>'+(p.orden_pregunta||(i+1))+'. '+p.texto+'</h3>';
+    if(p.imagen)html+='<img src="'+p.imagen+'" alt="Imagen de la pregunta">';
+    ['A','B','C','D'].forEach(function(opt){
+      var val=p['opcion_'+opt.toLowerCase()];
+      var imgVal=p['imagen_opcion_'+opt.toLowerCase()];
+      var sel=respuestas[p.id]===opt?' selected':'';
+      html+='<div class="option'+sel+'" onclick="seleccionar('+p.id+',\''+opt+'\',this)">';
+      html+='<input type="radio" name="q'+p.id+'" value="'+opt+'"'+(respuestas[p.id]===opt?' checked':'')+'>';
+      html+='<div class="opt-txt"><strong>'+opt+')</strong> ';
+      if(imgVal)html+='<img src="'+imgVal+'" style="max-width:220px;max-height:110px;border-radius:6px;display:block;margin:6px 0">';
+      if(val)html+=val;
+      html+='</div></div>';
+    });
     html+='</div>';
+  });
+
+  html+='<div class="nav-actions" style="padding:18px;background:#fff;border-radius:14px;border:1px solid #f1f5f9">';
+  html+='<div style="font-size:13px;color:#64748b;margin-bottom:10px">'+respondidas+' de '+preguntas.length+' respondidas. Tu progreso se guarda automaticamente.</div>';
+  if(haySiguiente){
+    html+='<button class="btn btn-success" style="width:100%" onclick="finalizarBloque()">Continuar a la siguiente materia &#8594;</button>';
+  }else{
+    html+='<button class="btn btn-success" style="width:100%" onclick="finalizarBloque()">Finalizar simulacro y ver resultados &#8594;</button>';
   }
-  html+='<h3>'+(p.orden_pregunta||(indexActual+1))+'. '+p.texto+'</h3>';
-  if(p.imagen)html+='<img src="'+p.imagen+'" alt="Imagen de la pregunta">';
-  ['A','B','C','D'].forEach(function(opt){
-    var val=p['opcion_'+opt.toLowerCase()];
-    var imgKey='imagen_opcion_'+opt.toLowerCase();
-    var imgVal=p[imgKey];
-    var sel=respuestas[p.id]===opt?' selected':'';
-    html+='<div class="option'+sel+'" onclick="seleccionar('+p.id+',\''+opt+'\',this)">';
-    html+='<input type="radio" name="q'+p.id+'" value="'+opt+'"'+(respuestas[p.id]===opt?' checked':'')+'>';
-    html+='<div class="opt-txt"><strong>'+opt+')</strong> ';
-    if(imgVal)html+='<img src="'+imgVal+'" style="max-width:220px;max-height:110px;border-radius:6px;display:block;margin:6px 0">';
-    if(val)html+=val;
-    html+='</div></div>';
-  });
   html+='</div>';
-
-  var chips='<div class="nav-chips">';
-  preguntas.forEach(function(q,i){
-    var cls=respuestas[q.id]?' answered':'';
-    if(i===indexActual)cls+=' current';
-    chips+='<div class="nav-chip'+cls+'" onclick="irA('+i+')">'+(i+1)+'</div>';
-  });
-  chips+='</div>';
-
-  html+='<div class="nav-actions">';
-  if(indexActual>0)html+='<button class="btn btn-secondary" onclick="irA('+(indexActual-1)+')">&#8592; Anterior</button>';
-  else html+='<span></span>';
-  html+='<div>';
-  if(indexActual<preguntas.length-1)html+='<button class="btn btn-primary" onclick="irA('+(indexActual+1)+')">Siguiente &#8594;</button>';
-  html+='<button class="btn btn-success" style="margin-left:10px" onclick="finalizarBloque()">Finalizar bloque</button>';
-  html+='</div></div>';
 
   cont.innerHTML=html;
+  window.scrollTo(0,0);
 }
 
 function seleccionar(pid,opt,el){
   respuestas[pid]=opt;
-  el.parentElement.querySelectorAll('.option').forEach(function(o){o.classList.remove('selected');});
+  var grupo=el.parentElement.querySelectorAll('.option');
+  for(var i=0;i<grupo.length;i++)grupo[i].classList.remove('selected');
   el.classList.add('selected');
   var radio=el.querySelector('input[type=radio]');
   if(radio)radio.checked=true;
-  renderUI();
+  var res=document.getElementById('resumenResp');
+  var fill=document.getElementById('fillResp');
+  if(res)res.textContent=Object.keys(respuestas).length+' respondidas de '+preguntas.length;
+  if(fill)fill.style.width=Math.round((Object.keys(respuestas).length/preguntas.length)*100)+'%';
   fetch('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/responder',{
     method:'POST',cache:'no-store',headers:{'Content-Type':'application/json'},
     body:JSON.stringify({pregunta_id:pid,respuesta_seleccionada:opt})
   }).catch(function(){debug('No se pudo guardar la respuesta');});
 }
 
-function irA(i){
-  if(i<0||i>=preguntas.length)return;
-  indexActual=i;
-  renderUI();
-}
-
 function finalizarBloque(silencioso){
   if(!silencioso){
-    if(!confirm('Â¿Finalizar el bloque "'+bloqueActual.materia_nombre+'"? Las respuestas se guardan y no volver&aacute;s a este bloque.'))return;
+    var haySiguiente=false;
+    bloques.forEach(function(b){if(b.orden===bloqueActual.orden+1)haySiguiente=true;});
+    var msg=haySiguiente
+      ? 'Continuar a la siguiente materia. Las respuestas se guardan y no volver&aacute;s a "'+bloqueActual.materia_nombre+'".'
+      : 'Finalizar el simulacro y ver resultados. Las respuestas se guardan y no volver&aacute;s a "'+bloqueActual.materia_nombre+'".';
+    if(!confirm(msg))return;
   }
   if(ocupado)return;
   ocupado=true;
@@ -333,7 +333,9 @@ function finalizarBloque(silencioso){
       }else{
         simulActual.bloque_actual=simulActual.bloque_actual+1;
         var cu=el('cuerpo');
-        if(cu)cu.innerHTML='<div class="cargando">Cargando siguiente bloque...</div>';
+        if(cu)cu.innerHTML='<div class="cargando">Cargando la siguiente materia...</div>';
+        var an=el('areaNombre');
+        if(an)an.textContent='Cargando siguiente materia...';
         procesarBloque();
       }
     }).catch(function(e){ocupado=false;banner('Error finalizando: '+e.message);});
