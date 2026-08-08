@@ -193,6 +193,10 @@ function cargarPreguntas(guarda){
     }).catch(function(e){alert('Error al cargar las preguntas ('+e.message+'). Pulsa Reintentar en el navegador.');});
 }
 
+function clearTimer(){
+  if(timerInterval){clearInterval(timerInterval);timerInterval=null;}
+}
+
 function iniciarTimer(segundos, iniciadoEn){
   if(timerInterval)clearInterval(timerInterval);
   var fin=new Date(iniciadoEn).getTime()+segundos*1000;
