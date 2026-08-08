@@ -42,6 +42,22 @@ body{margin:0;background:#f1f5f9}
 #banner .cerrar{float:right;cursor:pointer;font-weight:700}
 #debugLine{font-size:11px;color:#94a3b8;font-family:monospace;word-break:break-all;padding:2px 20px}
 .cargando{display:flex;justify-content:center;padding:60px 0;color:#64748b;font-size:15px}
+#borradorBtn{position:fixed;right:22px;bottom:22px;z-index:200;background:#1e293b;color:#fff;border:none;border-radius:30px;padding:13px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;align-items:center;gap:8px}
+#borradorBtn:hover{background:#334155}
+#borradorPanel{position:fixed;top:0;right:0;height:100%;width:min(480px,92vw);background:#fff;z-index:300;box-shadow:-4px 0 20px rgba(0,0,0,.2);display:none;flex-direction:column;transform:translateX(100%);transition:transform .2s ease}
+#borradorPanel.open{display:flex;transform:translateX(0)}
+.borrador-head{display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid #e2e8f0;background:#f8fafc}
+.borrador-head h4{margin:0;font-size:15px;color:#1e293b}
+.borrador-head .sub{font-size:12px;color:#94a3b8;font-weight:400}
+.borrador-tools{display:flex;gap:8px;padding:10px 16px;border-bottom:1px solid #e2e8f0;align-items:center;flex-wrap:wrap}
+.borrador-tools button{border:1px solid #e2e8f0;background:#fff;border-radius:8px;padding:7px 12px;font-size:13px;cursor:pointer;color:#334155}
+.borrador-tools button.active{background:#2563eb;color:#fff;border-color:#2563eb}
+.borrador-tools input[type=color]{width:32px;height:32px;border:1px solid #e2e8f0;border-radius:8px;padding:2px;cursor:pointer}
+.borrador-tools input[type=range]{width:70px}
+#borradorCanvasWrap{flex:1;position:relative;overflow:hidden;background-color:#fff;background-image:linear-gradient(#e2e8f0 1px,transparent 1px),linear-gradient(90deg,#e2e8f0 1px,transparent 1px);background-size:24px 24px}
+#borradorCanvas{position:absolute;top:0;left:0;touch-action:none;cursor:crosshair}
+#borradorCerrar{border:none;background:transparent;font-size:20px;cursor:pointer;color:#64748b;line-height:1}
+.borrador-hint{font-size:11px;color:#94a3b8;padding:6px 16px;border-top:1px solid #f1f5f9}
 </style>
 </head>
 <body>
@@ -53,10 +69,29 @@ body{margin:0;background:#f1f5f9}
 <div id="debugLine"></div>
 <div class="pv-wrap" id="cuerpo"><div class="cargando">Cargando preguntas, un momento&hellip;</div></div>
 
+<button id="borradorBtn" onclick="toggleBorrador()">&#9998; Hoja de borrador</button>
+<div id="borradorPanel">
+  <div class="borrador-head">
+    <div><h4>Hoja de borrador<span class="sub" id="borradorSub"></span></h4></div>
+    <button id="borradorCerrar" onclick="toggleBorrador()">&times;</button>
+  </div>
+  <div class="borrador-tools">
+    <button id="toolLapiz" class="active" onclick="setHerramienta('lapiz')">&#9998; L&aacute;piz</button>
+    <button id="toolBorrador" onclick="setHerramienta('goma')">&#9003; Borrar</button>
+    <input type="color" id="colorLapiz" value="#1e293b" onchange="cambiarColor(this.value)">
+    <input type="range" id="grosorLapiz" min="1" max="14" value="3" oninput="cambiarGrosor(this.value)">
+    <button onclick="limpiarBorrador()">Limpiar hoja</button>
+  </div>
+  <div id="borradorCanvasWrap">
+    <canvas id="borradorCanvas"></canvas>
+  </div>
+  <div class="borrador-hint">Uso libre para tus c&aacute;lculos, no se guarda ni se califica. Se limpia al pasar de materia, igual que en la prueba real.</div>
+</div>
+
 <script>
 var params=new URLSearchParams(window.location.search);
 var simulacroId=params.get('simulacro');
-var VERSION='5';
+var VERSION='6';
 var bloques=[], simulActual=null, bloqueActual=null, preguntas=[], respuestas={};
 var indexActual=0, timerInterval=null, ocupado=false;
 
@@ -329,8 +364,10 @@ function finalizarBloque(silencioso){
       ocupado=false;
       if(!j.ok){banner(j.data.error||('Error finalizando (HTTP '+j.status+')'));return;}
       if(j.data.simulacro_finalizado){
+        limpiarBorrador();
         window.location.href='/student/simulacro-resultados.html?simulacro='+simulacroId;
       }else{
+        limpiarBorrador();
         simulActual.bloque_actual=simulActual.bloque_actual+1;
         var cu=el('cuerpo');
         if(cu)cu.innerHTML='<div class="cargando">Cargando la siguiente materia...</div>';
@@ -346,10 +383,98 @@ function avanzarSiguiente(){
   bloques.forEach(function(b){if(b.orden===bloqueActual.orden+1)sig=b;});
   if(sig){
     simulActual.bloque_actual=sig.orden;
+    limpiarBorrador();
     procesarBloque();
   }else{
     window.location.href='/student/simulacro-resultados.html?simulacro='+simulacroId;
   }
+}
+
+/* ---------- Hoja de borrador ---------- */
+var bCanvas=null, bCtx=null, bDibujando=false, bHerramienta='lapiz', bColor='#1e293b', bGrosor=3, bLast=null;
+
+function toggleBorrador(){
+  var panel=el('borradorPanel');
+  if(!panel)return;
+  var abierto=panel.classList.toggle('open');
+  if(abierto){
+    var sub=el('borradorSub');
+    if(sub)sub.textContent=bloqueActual?(' &middot; '+bloqueActual.materia_nombre):'';
+    setTimeout(initBorradorCanvas,10);
+  }
+}
+
+function initBorradorCanvas(){
+  var wrap=el('borradorCanvasWrap');
+  bCanvas=el('borradorCanvas');
+  if(!bCanvas||!wrap)return;
+  var w=wrap.clientWidth, h=wrap.clientHeight;
+  if(bCanvas.width!==w||bCanvas.height!==h){
+    var prev=null;
+    if(bCanvas.width>0&&bCanvas.height>0){try{prev=bCanvas.toDataURL();}catch(e){}}
+    bCanvas.width=w; bCanvas.height=h;
+    bCtx=bCanvas.getContext('2d');
+    bCtx.lineCap='round'; bCtx.lineJoin='round';
+    if(prev){var img=new Image(); img.onload=function(){bCtx.drawImage(img,0,0);}; img.src=prev;}
+  } else if(!bCtx){
+    bCtx=bCanvas.getContext('2d');
+    bCtx.lineCap='round'; bCtx.lineJoin='round';
+  }
+  if(!bCanvas.dataset.bound){
+    bCanvas.dataset.bound='1';
+    bCanvas.addEventListener('pointerdown',bStart);
+    bCanvas.addEventListener('pointermove',bMove);
+    window.addEventListener('pointerup',bEnd);
+    window.addEventListener('pointercancel',bEnd);
+    window.addEventListener('resize',function(){setTimeout(initBorradorCanvas,50);});
+  }
+}
+
+function getPos(e){
+  var r=bCanvas.getBoundingClientRect();
+  return {x:e.clientX-r.left,y:e.clientY-r.top};
+}
+function bStart(e){
+  bDibujando=true;
+  bLast=getPos(e);
+  e.preventDefault();
+}
+function bMove(e){
+  if(!bDibujando||!bCtx)return;
+  var p=getPos(e);
+  if(bHerramienta==='goma'){
+    bCtx.globalCompositeOperation='destination-out';
+    bCtx.strokeStyle='rgba(0,0,0,1)';
+    bCtx.lineWidth=Math.max(bGrosor*5,18);
+  }else{
+    bCtx.globalCompositeOperation='source-over';
+    bCtx.strokeStyle=bColor;
+    bCtx.lineWidth=bGrosor;
+  }
+  bCtx.beginPath();
+  bCtx.moveTo(bLast.x,bLast.y);
+  bCtx.lineTo(p.x,p.y);
+  bCtx.stroke();
+  bCtx.globalCompositeOperation='source-over';
+  bLast=p;
+  e.preventDefault();
+}
+function bEnd(){bDibujando=false;}
+
+function setHerramienta(t){
+  bHerramienta=t;
+  var lp=el('toolLapiz');
+  var bo=el('toolBorrador');
+  if(lp)lp.classList.toggle('active',t==='lapiz');
+  if(bo)bo.classList.toggle('active',t==='goma');
+}
+function cambiarColor(c){
+  bColor=c;
+  if(bHerramienta==='goma')setHerramienta('lapiz');
+}
+function cambiarGrosor(v){bGrosor=parseInt(v,10);}
+function limpiarBorrador(){
+  if(bCtx&&bCanvas)bCtx.clearRect(0,0,bCanvas.width,bCanvas.height);
 }
 </script>
 </body></html>

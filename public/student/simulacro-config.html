@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -27,7 +27,7 @@
 <nav>
 <a href="/student/dashboard.html"><span class="icon">&#128200;</span><span>Inicio</span></a>
 <a href="/student/simulacro-config.html" class="active"><span class="icon">&#127979;</span><span>Simulacro ICFES</span></a>
-<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
+<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>EstadÃ­sticas</span></a>
 <a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
 <a href="/student/insignias.html"><span class="icon">&#127942;</span><span>Insignias</span></a>
 </nav>
@@ -107,7 +107,7 @@ function iniciarSimulado(){
         alert(res.data.error||'No se pudo generar el simulacro');
         return;
       }
-      window.location.href='/student/simulacro-presentar.html?simulacro='+res.data.simulacro_id+'&v=5';
+      window.location.href='/student/simulacro-presentar.html?simulacro='+res.data.simulacro_id+'&v=6';
     })
     .catch(function(e){btn.disabled=false;btn.innerHTML='&#9654; Iniciar simulacro completo';alert('Error de conexion');});
 }
