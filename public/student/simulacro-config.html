@@ -107,7 +107,7 @@ function iniciarSimulado(){
         alert(res.data.error||'No se pudo generar el simulacro');
         return;
       }
-      window.location.href='/student/simulacro-presentar.html?simulacro='+res.data.simulacro_id+'&v=7';
+      window.location.href='/student/simulacro-presentar.html?simulacro='+res.data.simulacro_id+'&v=8';
     })
     .catch(function(e){btn.disabled=false;btn.innerHTML='&#9654; Iniciar simulacro completo';alert('Error de conexion');});
 }
