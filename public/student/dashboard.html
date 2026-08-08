@@ -42,6 +42,13 @@
 .header-row{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .btn-marcar{font-size:12px;background:none;border:none;color:#2563eb;cursor:pointer;padding:0}
 .btn-marcar:hover{text-decoration:underline}
+.sim-cta{background:linear-gradient(135deg,#1e3a8a,#2563eb);border-radius:14px;color:#fff;padding:22px 26px;display:flex;align-items:center;gap:18px;margin-bottom:22px;cursor:pointer;box-shadow:0 4px 14px rgba(37,99,235,.25);transition:all .2s}
+.sim-cta:hover{transform:translateY(-2px);box-shadow:0 8px 20px rgba(37,99,235,.35)}
+.sim-cta .sim-ico{font-size:34px}
+.sim-cta .sim-txt{flex:1}
+.sim-cta .sim-txt h3{margin:0 0 4px;font-size:18px}
+.sim-cta .sim-txt p{margin:0;color:#bfdbfe;font-size:13px}
+.sim-cta .btn{background:#fff;color:#1e3a8a}
 </style>
 </head>
 <body>
@@ -49,6 +56,7 @@
 <div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
 <nav>
 <a href="/student/dashboard.html" class="active"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/simulacro-config.html"><span class="icon">&#127979;</span><span>Simulacro ICFES</span></a>
 <a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
 <a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
 <a href="/student/insignias.html"><span class="icon">&#127942;</span><span>Insignias</span></a>
@@ -71,6 +79,15 @@
       </div>
     </div>
   </div>
+</div>
+
+<div class="sim-cta" onclick="location.href='/student/simulacro-config.html'">
+  <div class="sim-ico">&#127979;</div>
+  <div class="sim-txt">
+    <h3>Simulacro ICFES completo</h3>
+    <p>254 preguntas &middot; 5 &aacute;reas &middot; puntaje oficial 0&ndash;500</p>
+  </div>
+  <button class="btn">Iniciar</button>
 </div>
 
 <div class="stats-grid">

@@ -190,6 +190,62 @@ async function initDB() {
     )`);
     await db.query(`CREATE INDEX IF NOT EXISTS idx_notif_usuario ON notificaciones(usuario_id)`);
 
+    // ============ MODULO SIMULACRO ICFES (tablas nuevas, no tocar las existentes) ============
+    await db.query(`CREATE TABLE IF NOT EXISTS simulacro_config_materias (
+      id SERIAL PRIMARY KEY,
+      materia_id INTEGER NOT NULL REFERENCES materias(id),
+      preguntas_requeridas INTEGER NOT NULL,
+      tiempo_minutos INTEGER NOT NULL,
+      peso_ponderacion NUMERIC(3,1) NOT NULL DEFAULT 3.0,
+      orden_presentacion INTEGER NOT NULL,
+      activo INTEGER DEFAULT 1,
+      max_repetidas_pct NUMERIC(4,2) NOT NULL DEFAULT 0.10,
+      permitir_incompleto INTEGER DEFAULT 1,
+      UNIQUE(materia_id)
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS simulacros (
+      id SERIAL PRIMARY KEY,
+      usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+      estado TEXT NOT NULL DEFAULT 'en_progreso',
+      bloque_actual INTEGER DEFAULT 0,
+      puntaje_global INTEGER,
+      iniciado_en TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      finalizado_en TIMESTAMP
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS simulacro_bloques (
+      id SERIAL PRIMARY KEY,
+      simulacro_id INTEGER NOT NULL REFERENCES simulacros(id) ON DELETE CASCADE,
+      materia_id INTEGER NOT NULL REFERENCES materias(id),
+      orden INTEGER NOT NULL,
+      tiempo_limite_segundos INTEGER NOT NULL,
+      iniciado_en TIMESTAMP,
+      finalizado_en TIMESTAMP,
+      correctas INTEGER DEFAULT 0,
+      total_preguntas INTEGER NOT NULL,
+      puntaje_area INTEGER
+    )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS simulacro_bloque_preguntas (
+      id SERIAL PRIMARY KEY,
+      bloque_id INTEGER NOT NULL REFERENCES simulacro_bloques(id) ON DELETE CASCADE,
+      pregunta_id INTEGER NOT NULL REFERENCES preguntas(id),
+      orden INTEGER NOT NULL,
+      respuesta_seleccionada TEXT,
+      es_correcta INTEGER,
+      respondida_en TIMESTAMP,
+      UNIQUE(bloque_id, pregunta_id)
+    )`);
+    await db.query(`INSERT INTO simulacro_config_materias (materia_id, preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion) VALUES
+      (2, 41, 90, 3.0, 1),
+      (1, 50, 100, 3.0, 2),
+      (4, 50, 105, 3.0, 3),
+      (3, 58, 120, 3.0, 4),
+      (5, 55, 90, 1.0, 5)
+      ON CONFLICT (materia_id) DO NOTHING`);
+    await db.query("SELECT setval('simulacro_config_materias_id_seq', (SELECT COALESCE(MAX(id),1) FROM simulacro_config_materias))");
+    await db.query("SELECT setval('simulacros_id_seq', (SELECT COALESCE(MAX(id),1) FROM simulacros))");
+    await db.query("SELECT setval('simulacro_bloques_id_seq', (SELECT COALESCE(MAX(id),1) FROM simulacro_bloques))");
+    await db.query("SELECT setval('simulacro_bloque_preguntas_id_seq', (SELECT COALESCE(MAX(id),1) FROM simulacro_bloque_preguntas))");
+
     const badgeCount = await db.query('SELECT COUNT(*) as t FROM badges');
     if (parseInt(badgeCount.rows[0].t) === 0) {
       const badges = [
@@ -925,6 +981,465 @@ app.put('/api/notificaciones/marcar-leidas', requireAuth, apiLimiter, async (req
   try {
     await db.query('UPDATE notificaciones SET leida=1 WHERE usuario_id=$1', [req.session.user.id]);
     res.json({ message: 'Notificaciones marcadas como leidas' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ============ MODULO SIMULACRO ICFES ============
+function calcularNivelDesempeno(puntajeArea) {
+  if (puntajeArea <= 39) return 'Insuficiente';
+  if (puntajeArea <= 59) return 'Minimo';
+  if (puntajeArea <= 79) return 'Satisfactorio';
+  return 'Avanzado';
+}
+
+async function seleccionarPreguntasMateria(db, usuarioId, materiaId, requeridas, maxRepetidasPct) {
+  const maxRepetidas = Math.floor(requeridas * maxRepetidasPct);
+
+  const ultimoSimulacro = await db.query(`
+    SELECT id FROM simulacros
+    WHERE usuario_id = $1 AND estado = 'finalizado'
+    ORDER BY finalizado_en DESC LIMIT 1
+  `, [usuarioId]);
+
+  let anteriores = [];
+  if (ultimoSimulacro.rows.length) {
+    const r = await db.query(`
+      SELECT sbp.pregunta_id
+      FROM simulacro_bloque_preguntas sbp
+      JOIN simulacro_bloques sb ON sb.id = sbp.bloque_id
+      WHERE sb.simulacro_id = $1 AND sb.materia_id = $2
+    `, [ultimoSimulacro.rows[0].id, materiaId]);
+    anteriores = r.rows.map(x => x.pregunta_id);
+  }
+
+  // Pool A: preguntas que NO salieron en el simulacro anterior (nuevas)
+  const excluir = anteriores.length ? anteriores : [0];
+  let seleccionadas = [];
+  const topeNuevas = Math.max(0, requeridas - maxRepetidas);
+  if (topeNuevas > 0) {
+    const poolA = await db.query(`
+      SELECT id FROM preguntas
+      WHERE materia_id = $1 AND id != ALL($2::int[])
+      ORDER BY RANDOM()
+      LIMIT $3
+    `, [materiaId, excluir, topeNuevas]);
+    seleccionadas = poolA.rows.map(x => x.id);
+  }
+
+  // Completar faltantes: primero con repetidas del simulacro anterior, luego con lo que quede del banco
+  let faltantes = requeridas - seleccionadas.length;
+  const yaTomadas = seleccionadas.length ? seleccionadas : [0];
+  let poolExtra = [];
+  if (faltantes > 0) {
+    const poolB = await db.query(`
+      SELECT id FROM preguntas
+      WHERE materia_id = $1 AND id != ALL($2::int[])
+      ORDER BY RANDOM()
+      LIMIT $3
+    `, [materiaId, yaTomadas, faltantes]);
+    poolExtra = poolB.rows.map(x => x.id);
+  }
+  seleccionadas = seleccionadas.concat(poolExtra);
+
+  // Banco insuficiente: completar con lo que quede del banco (el frontend lo marca como incompleto)
+  faltantes = requeridas - seleccionadas.length;
+  if (faltantes > 0) {
+    const yaTomadas2 = seleccionadas.length ? seleccionadas : [0];
+    const restantes = await db.query(`
+      SELECT id FROM preguntas
+      WHERE materia_id = $1 AND id != ALL($2::int[])
+      ORDER BY RANDOM()
+      LIMIT $3
+    `, [materiaId, yaTomadas2, faltantes]);
+    seleccionadas = seleccionadas.concat(restantes.rows.map(x => x.id));
+  }
+
+  // Mezclar orden final (que no queden las repetidas agrupadas)
+  return seleccionadas.sort(() => Math.random() - 0.5);
+}
+
+// Config publica (estructura oficial + disponibilidad actual del banco)
+app.get('/api/simulacros/config', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const cfg = await db.query(`
+      SELECT c.*, m.nombre as materia_nombre,
+        (SELECT COUNT(*) FROM preguntas p WHERE p.materia_id = c.materia_id) as disponibles
+      FROM simulacro_config_materias c
+      LEFT JOIN materias m ON c.materia_id = m.id
+      WHERE c.activo = 1
+      ORDER BY c.orden_presentacion
+    `);
+    let totalPreguntas = 0, totalMinutos = 0, totalPreguntasRequeridas = 0;
+    cfg.rows.forEach(r => {
+      totalPreguntas += parseInt(r.disponibles || 0);
+      totalPreguntasRequeridas += parseInt(r.preguntas_requeridas);
+      totalMinutos += parseInt(r.tiempo_minutos);
+    });
+    res.json({
+      materias: cfg.rows.map(r => ({
+        materia_id: r.materia_id, nombre: r.materia_nombre,
+        preguntas_requeridas: r.preguntas_requeridas, tiempo_minutos: r.tiempo_minutos,
+        peso_ponderacion: parseFloat(r.peso_ponderacion), orden_presentacion: r.orden_presentacion,
+        disponibles: parseInt(r.disponibles || 0), completa: parseInt(r.disponibles || 0) >= parseInt(r.preguntas_requeridas)
+      })),
+      totalPreguntasRequeridas, totalMinutos, totalPreguntas
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Crear simulacro nuevo (snapshot de preguntas por bloque)
+app.post('/api/simulacros', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const usuarioId = req.session.user.id;
+    const { modo, materia_id } = req.body || {};
+
+    const cfg = await db.query(`
+      SELECT c.* FROM simulacro_config_materias c
+      WHERE c.activo = 1 ORDER BY c.orden_presentacion
+    `);
+
+    let configMaterias = cfg.rows;
+    if (modo === 'por_materia' && materia_id) {
+      configMaterias = configMaterias.filter(c => c.materia_id === parseInt(materia_id));
+      if (configMaterias.length === 0) return res.status(404).json({ error: 'Materia no encontrada en la configuracion' });
+    }
+
+    const incompletos = [];
+    const bloques = [];
+
+    // Verificar disponibilidad antes de crear (modo estricto si permitir_incompleto = 0)
+    for (const c of configMaterias) {
+      const disp = await db.query('SELECT COUNT(*) as t FROM preguntas WHERE materia_id = $1', [c.materia_id]);
+      const disponibles = parseInt(disp.rows[0].t);
+      if (disponibles < c.preguntas_requeridas && c.permitir_incompleto === 0) {
+        return res.status(422).json({
+          error: c.materia_id + ' solo tiene ' + disponibles + '/' + c.preguntas_requeridas + ' preguntas cargadas. Completa el banco para habilitar el simulacro.'
+        });
+      }
+      if (disponibles < c.preguntas_requeridas) {
+        incompletos.push({ materia_id: c.materia_id, disponibles });
+      }
+    }
+
+    const sim = await db.query('INSERT INTO simulacros (usuario_id) VALUES ($1) RETURNING id', [usuarioId]);
+    const simulacroId = sim.rows[0].id;
+
+    let orden = 0;
+    for (const c of configMaterias) {
+      const disp = await db.query(`SELECT COUNT(*)::int AS t FROM preguntas WHERE materia_id = $1`, [c.materia_id]);
+      const disponibles = parseInt(disp.rows[0].t);
+      const requeridas = Math.min(c.preguntas_requeridas, disponibles);
+      const tiempoSegundos = c.tiempo_minutos * 60;
+      const tiempoAjustado = disponibles < c.preguntas_requeridas
+        ? Math.max(60, Math.round(tiempoSegundos * (disponibles / c.preguntas_requeridas)))
+        : tiempoSegundos;
+
+      const ids = await seleccionarPreguntasMateria(db, usuarioId, c.materia_id, requeridas, c.max_repetidas_pct);
+      if (ids.length === 0 && disponibles > 0) {
+        // Fallback simple si la seleccion anti-repeticion devolvio nada (banco muy pequeno)
+        const rest = await db.query('SELECT id FROM preguntas WHERE materia_id = $1 ORDER BY RANDOM() LIMIT $2', [c.materia_id, requeridas]);
+        ids.push(...rest.rows.map(x => x.id));
+      }
+
+      const bloque = await db.query(`
+        INSERT INTO simulacro_bloques (simulacro_id, materia_id, orden, tiempo_limite_segundos, total_preguntas)
+        VALUES ($1, $2, $3, $4, $5) RETURNING id
+      `, [simulacroId, c.materia_id, orden, tiempoAjustado, ids.length]);
+      const bloqueId = bloque.rows[0].id;
+
+      for (let i = 0; i < ids.length; i++) {
+        await db.query(`
+          INSERT INTO simulacro_bloque_preguntas (bloque_id, pregunta_id, orden)
+          VALUES ($1, $2, $3) ON CONFLICT DO NOTHING
+        `, [bloqueId, ids[i], i + 1]);
+      }
+
+      bloques.push({
+        id: bloqueId, orden, materia_id: c.materia_id, materia_nombre: c.materia_nombre ? c.materia_nombre : (await db.query('SELECT nombre FROM materias WHERE id=$1', [c.materia_id])).rows[0]?.nombre,
+        total_preguntas: ids.length, requeridas: c.preguntas_requeridas,
+        tiempo_limite_segundos: tiempoAjustado,
+        incompleto: disponibles < c.preguntas_requeridas
+      });
+      orden++;
+    }
+
+    res.json({ simulacro_id: simulacroId, bloques, incompletos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Estado actual del simulacro
+app.get('/api/simulacros/:id', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const bloques = await db.query(`SELECT sb.*, m.nombre AS materia_nombre FROM simulacro_bloques sb JOIN materias m ON m.id = sb.materia_id WHERE sb.simulacro_id = $1 ORDER BY sb.orden`, [req.params.id]);
+    res.json({ simulacro: sim.rows[0], bloques: bloques.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Iniciar bloque (backend arranca el cronometro)
+app.post('/api/simulacros/:id/bloques/:bloqueId/iniciar', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const bloque = await db.query(`SELECT * FROM simulacro_bloques WHERE id = $1 AND simulacro_id = $2`, [req.params.bloqueId, req.params.id]);
+    if (bloque.rows.length === 0) return res.status(404).json({ error: 'Bloque no encontrado' });
+    const b = bloque.rows[0];
+
+    if (b.orden !== s.bloque_actual) return res.status(400).json({ error: 'No es el bloque actual' });
+    if (b.iniciado_en) return res.json({ message: 'Bloque ya iniciado', bloque: b });
+
+    await db.query('UPDATE simulacro_bloques SET iniciado_en = CURRENT_TIMESTAMP WHERE id = $1', [b.id]);
+    b.iniciado_en = new Date();
+    res.json({ message: 'Bloque iniciado', bloque: b });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Preguntas del bloque (sin respuesta_correcta)
+app.get('/api/simulacros/:id/bloques/:bloqueId/preguntas', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const bloque = await db.query(`SELECT * FROM simulacro_bloques WHERE id = $1 AND simulacro_id = $2`, [req.params.bloqueId, req.params.id]);
+    if (bloque.rows.length === 0) return res.status(404).json({ error: 'Bloque no encontrado' });
+    const b = bloque.rows[0];
+    if (b.orden !== sim.rows[0].bloque_actual) return res.status(403).json({ error: 'Este bloque no es el actual' });
+
+    const r = await db.query(`
+      SELECT p.id, p.texto, p.imagen, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d,
+             p.imagen_opcion_a, p.imagen_opcion_b, p.imagen_opcion_c, p.imagen_opcion_d,
+             t.texto as texto_lectura_contenido, t.imagen as texto_lectura_imagen,
+             sbp.orden as orden_pregunta, sbp.respuesta_seleccionada
+      FROM simulacro_bloque_preguntas sbp
+      JOIN preguntas p ON p.id = sbp.pregunta_id
+      LEFT JOIN textos_lectura t ON p.texto_lectura_id = t.id
+      WHERE sbp.bloque_id = $1 ORDER BY sbp.orden
+    `, [req.params.bloqueId]);
+    res.json({ preguntas: r.rows, tiempo_limite_segundos: b.tiempo_limite_segundos, iniciado_en: b.iniciado_en });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Responder (valida tiempo del bloque a nivel servidor)
+app.post('/api/simulacros/:id/bloques/:bloqueId/responder', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const { pregunta_id, respuesta_seleccionada } = req.body;
+    if (!pregunta_id || !respuesta_seleccionada) return res.status(400).json({ error: 'Pregunta y respuesta requeridas' });
+
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const bloque = await db.query(`SELECT * FROM simulacro_bloques WHERE id = $1 AND simulacro_id = $2`, [req.params.bloqueId, req.params.id]);
+    if (bloque.rows.length === 0) return res.status(404).json({ error: 'Bloque no encontrado' });
+    const b = bloque.rows[0];
+    if (b.orden !== sim.rows[0].bloque_actual) return res.status(403).json({ error: 'No es el bloque actual' });
+    if (!b.iniciado_en) return res.status(400).json({ error: 'El bloque no ha iniciado' });
+    if (b.finalizado_en) return res.status(400).json({ error: 'El bloque ya fue cerrado' });
+
+    // Tiempo: servidor-autoritativo
+    const transcurridoMs = new Date() - new Date(b.iniciado_en);
+    if (transcurridoMs > b.tiempo_limite_segundos * 1000) {
+      return res.status(400).json({ error: 'Tiempo del bloque agotado. Debes finalizar el bloque.' });
+    }
+
+    const pregunta = await db.query('SELECT respuesta_correcta FROM preguntas WHERE id = $1', [pregunta_id]);
+    if (pregunta.rows.length === 0) return res.status(404).json({ error: 'Pregunta no encontrada' });
+    const correcta = pregunta.rows[0].respuesta_correcta;
+    const esCorrecta = correcta.toUpperCase() === respuesta_seleccionada.toUpperCase() ? 1 : 0;
+
+    await db.query(`
+      INSERT INTO simulacro_bloque_preguntas (bloque_id, pregunta_id, orden, respuesta_seleccionada, es_correcta, respondida_en)
+      VALUES ($1, $2, (SELECT orden FROM simulacro_bloque_preguntas WHERE bloque_id = $1 AND pregunta_id = $2), $3, $4, CURRENT_TIMESTAMP)
+      ON CONFLICT (bloque_id, pregunta_id)
+      DO UPDATE SET respuesta_seleccionada = $3, es_correcta = $4, respondida_en = CURRENT_TIMESTAMP
+    `, [req.params.bloqueId, pregunta_id, respuesta_seleccionada.toUpperCase(), esCorrecta]);
+
+    res.json({ es_correcta: esCorrecta });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Finalizar bloque: calcula puntaje_area (0-100) y devuelve el bloque actualizado
+async function finalizarBloque(db, bloque) {
+  if (bloque.finalizado_en) return bloque;
+  let correctas = 0, puntajeArea = 0;
+  if (bloque.iniciado_en) {
+    const resp = await db.query(`
+      SELECT COUNT(*)::int AS total_correctas FROM simulacro_bloque_preguntas
+      WHERE bloque_id = $1 AND es_correcta = 1`, [bloque.id]);
+    correctas = parseInt(resp.rows[0].total_correctas) || 0;
+    puntajeArea = bloque.total_preguntas > 0 ? Math.round((correctas / bloque.total_preguntas) * 100) : 0;
+  }
+  await db.query('UPDATE simulacro_bloques SET correctas=$1, puntaje_area=$2, finalizado_en=CURRENT_TIMESTAMP WHERE id=$3',
+    [correctas, puntajeArea, bloque.id]);
+  bloque.correctas = correctas;
+  bloque.puntaje_area = puntajeArea;
+  bloque.finalizado_en = new Date();
+  return bloque;
+}
+
+// Finalizar simulacro completo: promedio ponderado oficial (3-3-3-3-1) x 5 => escala 0-500
+async function finalizarSimulacro(db, simulacroId) {
+  const bloques = await db.query(`
+    SELECT sb.*, c.peso_ponderacion
+    FROM simulacro_bloques sb
+    LEFT JOIN simulacro_config_materias c ON c.materia_id = sb.materia_id
+    WHERE sb.simulacro_id = $1`, [simulacroId]);
+  let suma = 0, sumaPesos = 0;
+  for (const b of bloques.rows) {
+    const peso = parseFloat(b.peso_ponderacion) || 1;
+    suma += (b.puntaje_area || 0) * peso;
+    sumaPesos += peso;
+  }
+  const global = sumaPesos > 0 ? Math.round((suma / sumaPesos) * 5) : 0;
+  const fin = new Date();
+  await db.query('UPDATE simulacros SET estado=$1, puntaje_global=$2, bloque_actual=$3, finalizado_en=$4 WHERE id=$5',
+    ['finalizado', global, bloques.rows.length, fin, simulacroId]);
+  return { puntaje_global: global, total_bloques: bloques.rows.length, finalizado_en: fin };
+}
+
+app.put('/api/simulacros/:id/bloques/:bloqueId/finalizar', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const bloque = await db.query(`SELECT * FROM simulacro_bloques WHERE id = $1 AND simulacro_id = $2`, [req.params.bloqueId, req.params.id]);
+    if (bloque.rows.length === 0) return res.status(404).json({ error: 'Bloque no encontrado' });
+    const b = bloque.rows[0];
+    if (b.orden !== s.bloque_actual) return res.status(400).json({ error: 'No es el bloque actual' });
+
+    const bFinalizado = await finalizarBloque(db, b);
+
+    const total = await db.query('SELECT COUNT(*)::int AS total FROM simulacro_bloques WHERE simulacro_id = $1', [req.params.id]);
+    const esUltimo = bFinalizado.orden === parseInt(total.rows[0].total) - 1;
+
+    let resultados = null;
+    if (esUltimo) {
+      resultados = await finalizarSimulacro(db, req.params.id);
+    } else {
+      await db.query('UPDATE simulacros SET bloque_actual = $1 WHERE id = $2', [bFinalizado.orden + 1, req.params.id]);
+    }
+
+    res.json({
+      message: esUltimo ? 'Simulacro finalizado' : 'Bloque finalizado',
+      bloque: { id: bFinalizado.id, puntaje_area: bFinalizado.puntaje_area, correctas: bFinalizado.correctas },
+      total_preguntas: bFinalizado.total_preguntas,
+      simulacro_finalizado: esUltimo,
+      resultados
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Finalizar simulacro completo de golpe (fallback: cierra todos los bloques e inmediatamente puntaje global)
+app.put('/api/simulacros/:id/finalizar', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const bloques = await db.query(`SELECT * FROM simulacro_bloques WHERE simulacro_id = $1 AND finalizado_en IS NULL`, [req.params.id]);
+    for (const b of bloques.rows) {
+      if (b.orden === s.bloque_actual) await finalizarBloque(db, b);
+    }
+
+    const resultados = await finalizarSimulacro(db, req.params.id);
+    res.json({ message: 'Simulacro finalizado', resultados });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Resultados detallados del simulacro (con revision de respuestas y nivel de desempeno)
+app.get('/api/simulacros/:id/resultados', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'finalizado') return res.status(400).json({ error: 'El simulacro no ha finalizado' });
+
+    const bloques = await db.query(`
+      SELECT sb.*, m.nombre AS materia_nombre
+      FROM simulacro_bloques sb
+      JOIN materias m ON m.id = sb.materia_id
+      WHERE sb.simulacro_id = $1 ORDER BY sb.orden`, [req.params.id]);
+
+    const detalle = [];
+    for (const b of bloques.rows) {
+      const preguntas = await db.query(`
+        SELECT sbp.orden AS orden_pregunta, p.id, p.texto, p.imagen,
+               p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d,
+               p.imagen_opcion_a, p.imagen_opcion_b, p.imagen_opcion_c, p.imagen_opcion_d,
+               t.texto as texto_lectura_contenido, t.imagen as texto_lectura_imagen,
+               p.respuesta_correcta, sbp.respuesta_seleccionada, sbp.es_correcta
+        FROM simulacro_bloque_preguntas sbp
+        JOIN preguntas p ON p.id = sbp.pregunta_id
+        LEFT JOIN textos_lectura t ON p.texto_lectura_id = t.id
+        WHERE sbp.bloque_id = $1 ORDER BY sbp.orden`, [b.id]);
+
+      detalle.push({
+        bloque_id: b.id,
+        materia_id: b.materia_id,
+        materia_nombre: b.materia_nombre,
+        total_preguntas: b.total_preguntas,
+        correctas: b.correctas,
+        puntaje_area: b.puntaje_area,
+        puntaje_area_nivel: calcularNivelDesempeno(b.puntaje_area || 0),
+        tiempo_limite_segundos: b.tiempo_limite_segundos,
+        preguntas: preguntas.rows
+      });
+    }
+
+    const notaGlobal = s.puntaje_global || 0;
+    res.json({
+      puntaje_global: notaGlobal,
+      puntaje_global_nivel: calcularNivelDesempeno(Math.round(notaGlobal / 5)),
+      finalizado_en: s.finalizado_en,
+      total_bloques: bloques.rows.length,
+      detalle,
+      nota: 'Puntaje global en escala oficial ICFES 0-500 (PONDERADO 3-3-3-3-1). Puntajes por area en escala 0-100 simulada.'
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Mis simulacros (historial del estudiante)
+app.get('/api/mis-simulacros', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT si.*,
+        (SELECT COUNT(*) FROM simulacro_bloques sb WHERE sb.simulacro_id = si.id) AS total_bloques
+      FROM simulacros si
+      WHERE si.usuario_id = $1
+      ORDER BY si.iniciado_en DESC LIMIT 20`, [req.session.user.id]);
+    res.json({ simulacros: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: ver configuracion del simulacro
+app.get('/api/admin/simulacros/config', requireAdmin, apiLimiter, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT c.*, m.nombre AS materia_nombre,
+        (SELECT COUNT(*) FROM preguntas p WHERE p.materia_id = c.materia_id) AS disponibles
+      FROM simulacro_config_materias c
+      JOIN materias m ON m.id = c.materia_id
+      ORDER BY c.orden_presentacion`);
+    res.json({ materias: r.rows });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin config: actualizar parametros del simulacro por materia
+app.put('/api/admin/simulacros/config/:materiaId', requireAdmin, apiLimiter, async (req, res) => {
+  try {
+    const { preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion, activo, max_repetidas_pct, permitir_incompleto } = req.body;
+    const r = await db.query(`
+      UPDATE simulacro_config_materias
+      SET preguntas_requeridas=$1, tiempo_minutos=$2, peso_ponderacion=$3, orden_presentacion=$4,
+          activo=$5, max_repetidas_pct=$6, permitir_incompleto=$7
+      WHERE materia_id=$8`,
+      [preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion, activo, max_repetidas_pct, permitir_incompleto, req.params.materiaId]);
+    if (r.rowCount === 0) return res.status(404).json({ error: 'Configuracion no encontrada' });
+    res.json({ message: 'Configuracion actualizada' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

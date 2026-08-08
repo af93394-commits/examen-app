@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Simulacro ICFES</title>
+<link rel="stylesheet" href="/css/styles.css">
+<style>
+.sim-banner{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;border-radius:14px;padding:28px;margin-bottom:24px}
+.sim-banner h1{margin:0 0 6px;font-size:26px}
+.sim-banner p{margin:0;color:#bfdbfe;font-size:14px}
+.sim-totales{display:flex;gap:28px;margin-top:18px;flex-wrap:wrap}
+.sim-totales div{font-size:13px;color:#dbeafe}
+.sim-totales strong{display:block;font-size:22px;color:#fff}
+.cfg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;margin-bottom:24px}
+.cfg-card{background:#fff;border-radius:12px;padding:18px;border:1px solid #f1f5f9;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.cfg-card .mat-nombre{font-size:16px;font-weight:600;color:#1e293b;margin-bottom:10px}
+.cfg-row{display:flex;justify-content:space-between;font-size:13px;color:#475569;padding:5px 0;border-bottom:1px dashed #e2e8f0}
+.cfg-row:last-child{border-bottom:none}
+.cfg-row .ok{color:#16a34a;font-weight:600}
+.cfg-row .bad{color:#dc2626;font-weight:600}
+.aviso{background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:14px}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
+<nav>
+<a href="/student/dashboard.html"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/simulacro-config.html" class="active"><span class="icon">&#127979;</span><span>Simulacro ICFES</span></a>
+<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
+<a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
+<a href="/student/insignias.html"><span class="icon">&#127942;</span><span>Insignias</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Simulacro ICFES completo</h1></div>
+
+<div id="contenido">
+<div class="sim-banner" style="display:none" id="banner">
+  <h2>&#127979; Simulacro oficial ICFES</h2>
+  <p>Unicamente los bloques de las 5 areas se presentan en orden oficial. El puntaje global se calcula seg&uacute;n la ponderaci&oacute;n oficial (Lectura 3, Matem&aacute;ticas 3, Sociales 3, Naturales 3, Ingl&eacute;s 1) y se expresa en escala 0&ndash;500.</p>
+  <div class="sim-totales">
+    <div><strong id="tPreguntas">0</strong>preguntas</div>
+    <div><strong id="tMinutos">0</strong>minutos</div>
+    <div><strong id="tMaterias">0</strong>&aacute;reas</div>
+  </div>
+</div>
+<div class="aviso" style="display:none" id="aviso"></div>
+<div class="cfg-grid" id="cfgGrid"></div>
+<div style="text-align:center;margin-top:8px">
+  <button class="btn btn-primary" id="btnIniciar" style="font-size:16px;padding:14px 34px" onclick="iniciar()">&#9654; Iniciar simulacro completo</button>
+  <p style="color:#94a3b8;font-size:13px;margin-top:12px">Los bloques se responden de corrido con tiempo l&iacute;mite por &aacute;rea. Es similar a la jornada real ICFES.</p>
+</div>
+</div>
+</div>
+<script>
+fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(d){
+  if(d.user.rol!=='estudiante')window.location.href='/admin/dashboard.html';
+  document.getElementById('userName').textContent=d.user.nombre;
+  cargarConfig();
+}).catch(function(){window.location.href='/'});
+
+function cargarConfig(){
+  fetch('/api/simulacros/config').then(function(r){return r.json()}).then(function(d){
+    document.getElementById('banner').style.display='block';
+    document.getElementById('tPreguntas').textContent=d.totalPreguntasRequeridas;
+    document.getElementById('tMinutos').textContent=d.totalMinutos;
+    document.getElementById('tMaterias').textContent=d.materias.length;
+
+    var incompletas=d.materias.filter(function(m){return !m.completa});
+    if(incompletas.length>0){
+      var aviso=document.getElementById('aviso');
+      aviso.style.display='block';
+      aviso.innerHTML='&#9888; <strong>Aviso:</strong> el banco de preguntas no tiene la cantidad completa de ';
+      aviso.innerHTML+=incompletas.map(function(m){return m.nombre+' ('+m.disponibles+'/'+m.preguntas_requeridas+')'}).join(', ');
+      aviso.innerHTML+='. El simulacro aun se genera con lo disponible y lo ver&aacute;s marcado en la pantalla.';
+    }
+
+    var grid=document.getElementById('cfgGrid');
+    grid.innerHTML='';
+    d.materias.forEach(function(m){
+      var ok=m.completa;
+      var card=document.createElement('div');
+      card.className='cfg-card';
+      var html='<div class="cfg-nombre">'+m.nombre+'</div>';
+      html+='<div class="cfg-row"><span>&#128196; Preguntas</span><span class="'+(ok?'ok':'bad')+'">'+m.preguntas_requeridas+' ('+m.disponibles+' disp.)</span></div>';
+      html+='<div class="cfg-row"><span>&#9201; Tiempo</span><span>'+m.tiempo_minutos+' min</span></div>';
+      html+='<div class="cfg-row"><span>&#9878; Ponderaci&oacute;n</span><span>'+m.peso_ponderacion+'x</span></div>';
+      html+='<div class="cfg-row"><span>&#128308; Estado</span><span class="'+(ok?'ok':'bad')+'">'+(ok?'Completo':'Parcial')+'</span></div>';
+      card.innerHTML=html;
+      grid.appendChild(card);
+    });
+  }).catch(function(e){document.querySelector('#contenido').innerHTML='<div class="card empty-state"><p>Error al cargar la configuracion del simulacro</p></div>';});
+}
+
+function iniciarSimulado(){
+  var btn=document.getElementById('btnIniciar');
+  btn.disabled=true;
+  btn.innerHTML='Generando preguntas&hellip;';
+  fetch('/api/simulacros',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({modo:'completo'})})
+    .then(function(r){return r.json().then(function(d){return {ok:r.ok,data:d}})})
+    .then(function(res){
+      if(!res.ok){
+        btn.disabled=false;
+        btn.innerHTML='&#9654; Iniciar simulacro completo';
+        alert(res.data.error||'No se pudo generar el simulacro');
+        return;
+      }
+      window.location.href='/student/simulacro-presentar.html?simulacro='+res.data.simulacro_id;
+    })
+    .catch(function(e){btn.disabled=false;btn.innerHTML='&#9654; Iniciar simulacro completo';alert('Error de conexion');});
+}
+
+function logout(){fetch('/api/logout',{method:'POST'}).then(function(){window.location.href='/';})}
+</script>
+</body></html>
