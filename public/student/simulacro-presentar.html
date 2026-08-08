@@ -64,11 +64,29 @@ fetch('/api/sesion').then(function(r){if(!r.ok)throw 0;return r.json()}).then(fu
   cargarEstado();
 }).catch(function(){window.location.href='/'});
 
-function cargarEstado(){
-  fetch('/api/simulacros/'+simulacroId).then(function(r){
-    return r.json().then(function(d){return {ok:r.ok,data:d}});
-  }).then(function(j){
-    if(!j.ok){mostrarError(j.data.error||('Error del servidor ('+j.status+')'));return;}
+function fetchJson(url,opts){
+  return fetch(url,opts).then(function(r){
+    return r.text().then(function(txt){
+      var d=null;
+      try{d=JSON.parse(txt)}catch(e){d={error:'Respuesta no JSON (HTTP '+r.status+')'};}
+      return {ok:r.ok,status:r.status,data:d};
+    });
+  });
+}
+
+function cargarEstado(intentos){
+  intentos=intentos||0;
+  if(intentos>0){
+    document.getElementById('areaSub').textContent='Reconectando... intento '+intentos+'/10';
+  }
+  fetchJson('/api/simulacros/'+simulacroId).then(function(j){
+    if(!j.ok){
+      var msj=j.data&&j.data.error||'';
+      var transitorio=(j.status>=500||j.status===529||msj.indexOf('Respuesta no JSON')===0);
+      if(transitorio){reintentarCarga(intentos);return;}
+      mostrarError(msj||('Error del servidor ('+j.status+')'));
+      return;
+    }
     var d=j.data;
     simulActual=d.simulacro;
     bloques=d.bloques;
@@ -81,9 +99,18 @@ function cargarEstado(){
       return;
     }
     procesarBloque();
-  }).catch(function(){
-    mostrarError('No se pudo conectar con el servidor. Puede ser que estuviera arrancando: pulsa Reintentar.');
+  }).catch(function(e){
+    reintentarCarga(intentos,e);
   });
+}
+
+function reintentarCarga(intentos,err){
+  if(intentos<10){
+    setTimeout(function(){cargarEstado(intentos+1)},7000);
+    return;
+  }
+  var det=err&&err.message?(' Detalle: '+err.message):'';
+  mostrarError('No se pudo conectar con el servidor tras 10 intentos. Puede ser que estuviera arrancando.'+det+' Pulsa Reintentar.');
 }
 
 function mostrarError(msg){
@@ -137,21 +164,19 @@ function mostrarIntro(){
 }
 
 function iniciarBloque(){
-  fetch('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/iniciar',{method:'POST'})
-    .then(function(r){return r.json().then(function(d){return {ok:r.ok,data:d}})})
+  fetchJson('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/iniciar',{method:'POST'})
     .then(function(j){
-      if(!j.ok){alert(j.data.error||'No se pudo iniciar el bloque.');return;}
+      if(!j.ok){alert(j.data.error||('Error del servidor ('+j.status+')'));return;}
       bloqueActual.iniciado_en=j.data.bloque.iniciado_en||new Date().toISOString();
       cargarPreguntas();
     })
-    .catch(function(){alert('No se pudo iniciar el bloque. Intenta de nuevo.');});
+    .catch(function(e){alert('No se pudo iniciar el bloque ('+e.message+'). Intenta de nuevo.');});
 }
 
-function cargarPreguntas(){
-  fetch('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/preguntas')
-    .then(function(r){return r.json().then(function(d){return {ok:r.ok,data:d}})})
+function cargarPreguntas(guarda){
+  fetchJson('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/preguntas')
     .then(function(j){
-      if(!j.ok){alert(j.data.error||'Error al cargar las preguntas.');return;}
+      if(!j.ok){alert(j.data.error||('Error al cargar las preguntas ('+j.status+')'));return;}
       var d=j.data;
       preguntas=d.preguntas;
       respuestas={};
@@ -165,7 +190,7 @@ function cargarPreguntas(){
       document.getElementById('intro').style.display='none';
       document.getElementById('cuerpo').style.display='block';
       renderUI();
-    }).catch(function(){alert('Error al cargar las preguntas. Pulsa Reintentar en el navegador.');});
+    }).catch(function(e){alert('Error al cargar las preguntas ('+e.message+'). Pulsa Reintentar en el navegador.');});
 }
 
 function iniciarTimer(segundos, iniciadoEn){
@@ -267,10 +292,9 @@ function irA(i){
 function finalizarBloque(){
   if(!confirm('¿Finalizar el bloque "'+bloqueActual.materia_nombre+'"? Las respuestas se guardan y no podr&aacute;s volver atr&aacute;s.'))return;
   if(timerInterval)clearInterval(timerInterval);
-  fetch('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/finalizar',{method:'PUT'})
-    .then(function(r){return r.json().then(function(d){return {ok:r.ok,data:d}})})
+  fetchJson('/api/simulacros/'+simulacroId+'/bloques/'+bloqueActual.id+'/finalizar',{method:'PUT'})
     .then(function(j){
-      if(!j.ok){alert(j.data.error||'Error finalizando el bloque');return;}
+      if(!j.ok){alert(j.data.error||('Error finalizando el bloque ('+j.status+')'));return;}
       var d=j.data;
       if(d.simulacro_finalizado){
         window.location.href='/student/simulacro-resultados.html?simulacro='+simulacroId;
@@ -278,7 +302,7 @@ function finalizarBloque(){
         simulActual.bloque_actual=simulActual.bloque_actual+1;
         procesarBloque();
       }
-    }).catch(function(){alert('Error finalizando el bloque');});
+    }).catch(function(e){alert('Error finalizando el bloque ('+e.message+')');});
 }
 
 function avanzarSiguiente(){
