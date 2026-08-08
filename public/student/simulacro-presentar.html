@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
@@ -10,8 +10,9 @@
 <style>
 body{margin:0;background:#f1f5f9}
 .topo{position:sticky;top:0;z-index:100;background:#fff;border-bottom:1px solid #e2e8f0;padding:12px 20px;display:flex;align-items:center;gap:16px;justify-content:space-between;flex-wrap:wrap}
-.topo .area{font-size:15px;font-weight:700;color:#1e293b}
-.topo .area small{display:block;font-weight:400;color:#64748b;font-size:12px}
+.topo .area-title{display:flex;flex-direction:column;gap:2px}
+.topo #areaNombre{font-size:15px;font-weight:700;color:#1e293b}
+.topo #areaSub{font-size:12px;font-weight:400;color:#64748b;display:block}
 .quiz-timer{font-size:22px;font-weight:700;color:#dc2626;background:#fee2e2;padding:8px 18px;border-radius:10px}
 .quiz-timer.low{animation:pulse 1s infinite}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
@@ -46,7 +47,7 @@ body{margin:0;background:#f1f5f9}
 <body>
 <div id="banner"></div>
 <div class="topo">
-  <div class="area" id="areaNombre">Cargando simulacro&hellip;<small id="areaSub"></small></div>
+  <div class="area-title"><span id="areaNombre">Cargando simulacro&hellip;</span><span id="areaSub" class="area-sub"></span></div>
   <div class="quiz-timer" id="quizTimer">--:--</div>
 </div>
 <div id="debugLine"></div>
@@ -55,7 +56,7 @@ body{margin:0;background:#f1f5f9}
 <script>
 var params=new URLSearchParams(window.location.search);
 var simulacroId=params.get('simulacro');
-var VERSION='3';
+var VERSION='4';
 var bloques=[], simulActual=null, bloqueActual=null, preguntas=[], respuestas={};
 var indexActual=0, timerInterval=null, ocupado=false;
 
@@ -318,7 +319,7 @@ function irA(i){
 
 function finalizarBloque(silencioso){
   if(!silencioso){
-    if(!confirm('¿Finalizar el bloque "'+bloqueActual.materia_nombre+'"? Las respuestas se guardan y no volver&aacute;s a este bloque.'))return;
+    if(!confirm('Â¿Finalizar el bloque "'+bloqueActual.materia_nombre+'"? Las respuestas se guardan y no volver&aacute;s a este bloque.'))return;
   }
   if(ocupado)return;
   ocupado=true;
