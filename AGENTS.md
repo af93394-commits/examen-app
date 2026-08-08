@@ -29,6 +29,13 @@ Plataforma de examenes/cuestionarios ICFES para estudiantes colombianos.
 4. **NO tocar:** Clave admin, estructura de cuestionarios existentes.
 5. **IMAGENES:** Solo insertar el TEXTO de las preguntas. Las imagenes las sube el usuario manualmente desde el admin panel. NO pegar imagenes en el texto.
 
+## Modulo Simulacro ICFES (estado al 2026-08-08, HEAD bae07a0)
+- Los cambios al HTML de simulacro requieren cache-busting: actualizar `VERSION` dentro de `public/student/simulacro-presentar.html` Y el parametro `?v=N` en los enlaces de `simulacro-config.html` y `resultados.html` (en la v8: `?simulacro=..&v=8`).
+- Probar SIEMPRE contra produccion con Edge headless antes de avisar al usuario (ver seccion "Simulacro" de SESION_TRABAJO.md).
+- Hoja de borrador: la goma usa `globalCompositeOperation='destination-out'`; el borrador se limpia en `finalizarBloque` y `avanzarSiguiente`.
+- Endpoint `GET /api/mis-simulacros` devuelve `puntaje_global_nivel` (nivel global sobre 5) usado por la pestana Simulacros en resultados.
+- `puppeteer-core` esta instalado local con `--no-save` (si falta: `npm install puppeteer-core --no-save`).
+
 ## Como agregar preguntas nuevas
 1. Pedir al usuario el bloque de preguntas en texto
 2. Insertar en PostgreSQL usando la URL de DATABASE_URL
