@@ -23,6 +23,15 @@
 <div class="page-header"><h1>Informes de Estudiantes</h1></div>
 <div id="vistaEstudiantes">
 <div style="margin-bottom:16px">
+<h2 style="margin-bottom:4px">Simulacros en curso</h2>
+<p style="color:#64748b;font-size:13px">Pausa o reanuda el simulacro de cualquier estudiante. Al pausar se congela el cron&oacute;metro; el estudiante contin&uacute;a donde qued&oacute;.</p>
+<div style="margin-bottom:10px"><button class="btn btn-sm btn-secondary" onclick="cargarSimulacrosActivos()">&#8635; Actualizar</button></div>
+<div id="tablaSimulacros" class="table-container">
+<table><thead><tr><th>Estudiante</th><th>Materia actual</th><th>Tiempo restante</th><th>Estado</th><th>Acciones</th></tr></thead>
+<tbody id="cuerpoSimulacros"></tbody></table>
+</div>
+</div>
+<div style="margin-bottom:16px">
 <h2 style="margin-bottom:4px">Estudiantes</h2>
 <p style="color:#64748b;font-size:13px">Selecciona un estudiante para ver sus intentos</p>
 </div>
@@ -52,8 +61,59 @@ var currentEstudianteId = 0, currentEstudianteNombre = '';
 fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
   document.getElementById('userName').textContent = d.user.nombre;
   if (d.user.rol !== 'admin') window.location.href = '/';
+  cargarSimulacrosActivos();
   loadEstudiantes();
 }).catch(function() { window.location.href = '/'; });
+
+function fmtTiempo(seg) {
+  seg = Math.max(0, Math.round(seg || 0));
+  var m = Math.floor(seg / 60), s = seg % 60;
+  return m + ':' + s.toString().padStart(2, '0');
+}
+
+function cargarSimulacrosActivos() {
+  var tb = document.getElementById('cuerpoSimulacros');
+  if (!tb) return;
+  tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">Cargando...</td></tr>';
+  fetch('/api/admin/simulacros/activos').then(function(r) { return r.json(); }).then(function(d) {
+    tb.innerHTML = '';
+    if (!d.activos || d.activos.length === 0) {
+      tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;padding:24px">No hay simulacros en curso</td></tr>';
+      return;
+    }
+    d.activos.forEach(function(s) {
+      var row = '<tr>';
+      row += '<td><strong>' + s.estudiante + '</strong><br><span style="color:#94a3b8;font-size:12px">' + s.usuario + '</span></td>';
+      row += '<td>' + s.materia_nombre + ' (bloque ' + (s.bloque_orden + 1) + '/' + s.total_bloques + ')</td>';
+      row += '<td style="font-weight:700;font-family:monospace">' + fmtTiempo(s.tiempo_restante_segundos) + ' min</td>';
+      row += '<td>' + (s.pausado
+        ? '<span class="badge badge-inactive">&#9208; Pausado</span>'
+        : '<span class="badge badge-active">En curso</span>') + '</td>';
+      var accion = s.pausado
+        ? '<button class="btn btn-sm btn-success" onclick="reanudarSimAdmin(' + s.simulacro_id + ')">&#9654; Reanudar</button>'
+        : '<button class="btn btn-sm btn-warning" onclick="pausarSimAdmin(' + s.simulacro_id + ')">&#9208; Pausar</button>';
+      row += '<td>' + accion + '</td>';
+      row += '</tr>';
+      tb.innerHTML += row;
+    });
+  }).catch(function() {
+    tb.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#dc2626;padding:24px">No se pudieron cargar los simulacros en curso</td></tr>';
+  });
+}
+
+function pausarSimAdmin(id) {
+  fetch('/api/admin/simulacros/' + id + '/pausar', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(d) {
+    alert(d.message || 'Simulacro pausado');
+    cargarSimulacrosActivos();
+  }).catch(function() { alert('No se pudo pausar el simulacro'); });
+}
+
+function reanudarSimAdmin(id) {
+  fetch('/api/admin/simulacros/' + id + '/reanudar', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(d) {
+    alert(d.message || 'Simulacro reanudado');
+    cargarSimulacrosActivos();
+  }).catch(function() { alert('No se pudo reanudar el simulacro'); });
+}
 
 function loadEstudiantes() {
   fetch('/api/admin/estudiantes-con-intentos').then(function(r) { return r.json(); }).then(function(d) {

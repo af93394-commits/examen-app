@@ -29,12 +29,20 @@ Plataforma de examenes/cuestionarios ICFES para estudiantes colombianos.
 4. **NO tocar:** Clave admin, estructura de cuestionarios existentes.
 5. **IMAGENES:** Solo insertar el TEXTO de las preguntas. Las imagenes las sube el usuario manualmente desde el admin panel. NO pegar imagenes en el texto.
 
-## Modulo Simulacro ICFES (estado al 2026-08-08, HEAD bae07a0)
-- Los cambios al HTML de simulacro requieren cache-busting: actualizar `VERSION` dentro de `public/student/simulacro-presentar.html` Y el parametro `?v=N` en los enlaces de `simulacro-config.html` y `resultados.html` (en la v8: `?simulacro=..&v=8`).
+## Modulo Simulacro ICFES (estado al 2026-08-09, pausa v9)
+- Los cambios al HTML de simulacro requieren cache-busting: actualizar `VERSION` dentro de `public/student/simulacro-presentar.html` Y el parametro `?v=N` en los enlaces de `simulacro-config.html` y `resultados.html` (en la v9: `?simulacro=..&v=9`).
 - Probar SIEMPRE contra produccion con Edge headless antes de avisar al usuario (ver seccion "Simulacro" de SESION_TRABAJO.md).
 - Hoja de borrador: la goma usa `globalCompositeOperation='destination-out'`; el borrador se limpia en `finalizarBloque` y `avanzarSiguiente`.
 - Endpoint `GET /api/mis-simulacros` devuelve `puntaje_global_nivel` (nivel global sobre 5) usado por la pestana Simulacros en resultados.
 - `puppeteer-core` esta instalado local con `--no-save` (si falta: `npm install puppeteer-core --no-save`).
+
+## Pausa de simulacro v9 (2026-08-09)
+- Endpoints: `PUT /api/simulacros/:id/pausar` y `/reanudar` (estudiante, solo su propio simulacro); `PUT /api/admin/simulacros/:id/pausar` y `/reanudar` (admin, cualquier simulacro); `GET /api/admin/simulacros/activos` (lista en curso).
+- BD: columnas `simulacro_bloques.tiempo_usado_segundos` (tiempo consumido acumulado) y `pausado_en`. La migracion corre sola en `initDB` con `ADD COLUMN IF NOT EXISTS`.
+- EL TIMER SOLO LO CONGELA EL SERVIDOR: al pausar se acumula el tiempo usado y al reanudar `iniciado_en=CURRENT_TIMESTAMP`; el cliente muestra el restante devuelto del server.
+- El cliente auto-pausa al salir con `pagehide`/`visibilitychange` + `sendBeacon` (cerrar pestana/cambiar de pestana). Mientras esta pausado, `responder` y `finalizar` bloque devuelven 400.
+- NO romper: pausar es idempotente (WHERE pausado_en IS NULL); `tiempoUsadoBloque()` NO suma (pausado_en - iniciado_en) cuando esta pausado (la ventana ya se acumulo al pausar).
+- Local (Windows UTC-5) el cronometro muestra 5h de mas al iniciar (artefacto de zona horaria pre-existente; en produccion Render/Neon en UTC es correcto). Probar siempre contra produccion.
 
 ## Como agregar preguntas nuevas
 1. Pedir al usuario el bloque de preguntas en texto

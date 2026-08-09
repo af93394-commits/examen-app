@@ -16,6 +16,7 @@ a{text-decoration:none;color:inherit}
 .btn-success{background:#16a34a;color:#fff}.btn-success:hover{background:#15803d}
 .btn-danger{background:#dc2626;color:#fff}.btn-danger:hover{background:#b91c1c}
 .btn-secondary{background:#e2e8f0;color:#475569}.btn-secondary:hover{background:#cbd5e1}
+.btn-warning{background:#f59e0b;color:#fff}.btn-warning:hover{background:#d97706}
 .btn-sm{padding:5px 10px;font-size:11px;white-space:nowrap}
 .btn-block{width:100%;justify-content:center}
 .sidebar{position:fixed;left:0;top:0;bottom:0;width:240px;background:#1e293b;color:#fff;padding:20px 0;z-index:100}

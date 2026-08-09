@@ -237,6 +237,9 @@ async function initDB() {
       respondida_en TIMESTAMP,
       UNIQUE(bloque_id, pregunta_id)
     )`);
+    // Pausa de simulacro: tiempo ya consumido (excluye pausas) y marca de pausa del bloque actual
+    await db.query(`ALTER TABLE simulacro_bloques ADD COLUMN IF NOT EXISTS tiempo_usado_segundos INTEGER NOT NULL DEFAULT 0`);
+    await db.query(`ALTER TABLE simulacro_bloques ADD COLUMN IF NOT EXISTS pausado_en TIMESTAMP`);
     await db.query(`INSERT INTO simulacro_config_materias (materia_id, preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion) VALUES
       (2, 41, 90, 3.0, 1),
       (1, 50, 100, 3.0, 2),
@@ -1071,6 +1074,18 @@ async function seleccionarPreguntasMateria(db, usuarioId, materiaId, requeridas,
   return seleccionadas.sort(() => Math.random() - 0.5);
 }
 
+// Tiempo efectivamente usado por el bloque (excluye periodos de pausa)
+function tiempoUsadoBloque(b) {
+  const acumulado = parseInt(b.tiempo_usado_segundos) || 0;
+  if (b.pausado_en) return acumulado; // la ventana corrida ya fue acumulada al pausar
+  if (b.iniciado_en) return acumulado + Math.max(0, Math.round((Date.now() - new Date(b.iniciado_en)) / 1000));
+  return acumulado;
+}
+
+function tiempoRestanteBloque(b) {
+  return Math.max(0, parseInt(b.tiempo_limite_segundos) - tiempoUsadoBloque(b));
+}
+
 // Config publica (estructura oficial + disponibilidad actual del banco)
 app.get('/api/simulacros/config', requireAuth, apiLimiter, async (req, res) => {
   try {
@@ -1190,6 +1205,57 @@ app.get('/api/simulacros/:id', requireAuth, apiLimiter, async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// Bloque actual en curso de un simulacro (solo para pausar/reanudar)
+async function obtenerBloqueActual(db, simulacroId, s) {
+  const r = await db.query(`SELECT * FROM simulacro_bloques WHERE simulacro_id = $1 AND orden = $2`, [simulacroId, s.bloque_actual]);
+  return r.rows[0] || null;
+}
+
+// Pausar el bloque actual: congela el cronometro (el tiempo usado hasta ahora se acumula)
+app.put('/api/simulacros/:id/pausar', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const b = await obtenerBloqueActual(db, req.params.id, s);
+    if (!b) return res.status(404).json({ error: 'Bloque actual no encontrado' });
+    if (b.finalizado_en) return res.status(400).json({ error: 'El bloque ya fue cerrado' });
+    if (!b.iniciado_en) return res.json({ message: 'El bloque aun no inicia', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
+    if (b.pausado_en) return res.json({ message: 'Simulacro ya pausado', pausado: true, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
+
+    await db.query(`UPDATE simulacro_bloques
+      SET tiempo_usado_segundos = tiempo_usado_segundos + EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - iniciado_en))::int,
+          pausado_en = CURRENT_TIMESTAMP
+      WHERE id = $1 AND pausado_en IS NULL AND finalizado_en IS NULL AND iniciado_en IS NOT NULL`, [b.id]);
+
+    const bPausado = (await db.query('SELECT * FROM simulacro_bloques WHERE id = $1', [b.id])).rows[0];
+    res.json({ message: 'Simulacro pausado. El tiempo queda congelado.', pausado: true, tiempo_restante_segundos: tiempoRestanteBloque(bPausado), bloque: bPausado });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Reanudar el bloque pausado: relanza el cronometro con el tiempo restante acumulado
+app.put('/api/simulacros/:id/reanudar', requireAuth, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const b = await obtenerBloqueActual(db, req.params.id, s);
+    if (!b) return res.status(404).json({ error: 'Bloque actual no encontrado' });
+    if (b.finalizado_en) return res.status(400).json({ error: 'El bloque ya fue cerrado' });
+    if (!b.pausado_en) return res.json({ message: 'Simulacro no estaba pausado', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
+
+    await db.query(`UPDATE simulacro_bloques SET pausado_en = NULL, iniciado_en = CURRENT_TIMESTAMP WHERE id = $1 AND pausado_en IS NOT NULL`, [b.id]);
+
+    b.pausado_en = null;
+    b.iniciado_en = new Date();
+    res.json({ message: 'Simulacro reanudado. El cronometro sigue desde donde quedó.', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), iniciado_en: b.iniciado_en.toISOString(), bloque: b });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // Iniciar bloque (backend arranca el cronometro)
 app.post('/api/simulacros/:id/bloques/:bloqueId/iniciar', requireAuth, apiLimiter, async (req, res) => {
   try {
@@ -1231,7 +1297,7 @@ app.get('/api/simulacros/:id/bloques/:bloqueId/preguntas', requireAuth, apiLimit
       LEFT JOIN textos_lectura t ON p.texto_lectura_id = t.id
       WHERE sbp.bloque_id = $1 ORDER BY sbp.orden
     `, [req.params.bloqueId]);
-    res.json({ preguntas: r.rows, tiempo_limite_segundos: b.tiempo_limite_segundos, iniciado_en: b.iniciado_en });
+    res.json({ preguntas: r.rows, tiempo_limite_segundos: b.tiempo_limite_segundos, iniciado_en: b.iniciado_en, pausado: !!b.pausado_en, tiempo_restante_segundos: tiempoRestanteBloque(b) });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1249,10 +1315,10 @@ app.post('/api/simulacros/:id/bloques/:bloqueId/responder', requireAuth, apiLimi
     if (b.orden !== sim.rows[0].bloque_actual) return res.status(403).json({ error: 'No es el bloque actual' });
     if (!b.iniciado_en) return res.status(400).json({ error: 'El bloque no ha iniciado' });
     if (b.finalizado_en) return res.status(400).json({ error: 'El bloque ya fue cerrado' });
+    if (b.pausado_en) return res.status(400).json({ error: 'El simulacro está pausado. Reanúdalo para seguir respondiendo.' });
 
-    // Tiempo: servidor-autoritativo
-    const transcurridoMs = new Date() - new Date(b.iniciado_en);
-    if (transcurridoMs > b.tiempo_limite_segundos * 1000) {
+    // Tiempo: servidor-autoritativo (excluye periodos de pausa)
+    if (tiempoRestanteBloque(b) <= 0) {
       return res.status(400).json({ error: 'Tiempo del bloque agotado. Debes finalizar el bloque.' });
     }
 
@@ -1322,6 +1388,7 @@ app.put('/api/simulacros/:id/bloques/:bloqueId/finalizar', requireAuth, apiLimit
     if (bloque.rows.length === 0) return res.status(404).json({ error: 'Bloque no encontrado' });
     const b = bloque.rows[0];
     if (b.orden !== s.bloque_actual) return res.status(400).json({ error: 'No es el bloque actual' });
+    if (b.pausado_en) return res.status(400).json({ error: 'El simulacro está pausado. Reanúdalo para finalizar el bloque.' });
 
     const bFinalizado = await finalizarBloque(db, b);
 
@@ -1420,12 +1487,20 @@ app.get('/api/mis-simulacros', requireAuth, apiLimiter, async (req, res) => {
   try {
     const r = await db.query(`
       SELECT si.*,
-        (SELECT COUNT(*) FROM simulacro_bloques sb WHERE sb.simulacro_id = si.id) AS total_bloques
+        (SELECT COUNT(*) FROM simulacro_bloques sb WHERE sb.simulacro_id = si.id) AS total_bloques,
+        (SELECT sb2.pausado_en FROM simulacro_bloques sb2 WHERE sb2.simulacro_id = si.id AND sb2.orden = si.bloque_actual) AS bloque_pausado_en,
+        (SELECT sb3.iniciado_en FROM simulacro_bloques sb3 WHERE sb3.simulacro_id = si.id AND sb3.orden = si.bloque_actual) AS bloque_iniciado_en,
+        (SELECT sb4.tiempo_usado_segundos FROM simulacro_bloques sb4 WHERE sb4.simulacro_id = si.id AND sb4.orden = si.bloque_actual) AS bloque_tiempo_usado,
+        (SELECT sb5.tiempo_limite_segundos FROM simulacro_bloques sb5 WHERE sb5.simulacro_id = si.id AND sb5.orden = si.bloque_actual) AS bloque_tiempo_limite
       FROM simulacros si
       WHERE si.usuario_id = $1
       ORDER BY si.iniciado_en DESC LIMIT 20`, [req.session.user.id]);
     const simulacros = r.rows.map(s => ({
       ...s,
+      pausado: s.estado === 'en_progreso' ? !!s.bloque_pausado_en : false,
+      tiempo_restante_segundos: s.estado === 'en_progreso' && s.bloque_tiempo_limite != null
+        ? tiempoRestanteBloque({ tiempo_limite_segundos: s.bloque_tiempo_limite, tiempo_usado_segundos: s.bloque_tiempo_usado, iniciado_en: s.bloque_iniciado_en, pausado_en: s.bloque_pausado_en })
+        : null,
       puntaje_global_nivel: s.puntaje_global != null ? calcularNivelDesempeno(Math.round(s.puntaje_global / 5)) : null
     }));
     res.json({ simulacros });
@@ -1457,6 +1532,85 @@ app.put('/api/admin/simulacros/config/:materiaId', requireAdmin, apiLimiter, asy
       [preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion, activo, max_repetidas_pct, permitir_incompleto, req.params.materiaId]);
     if (r.rowCount === 0) return res.status(404).json({ error: 'Configuracion no encontrada' });
     res.json({ message: 'Configuracion actualizada' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: simulacros en curso de todos los estudiantes (para pausar/reanudar remotamente)
+app.get('/api/admin/simulacros/activos', requireAdmin, apiLimiter, async (req, res) => {
+  try {
+    const r = await db.query(`
+      SELECT s.id, s.usuario_id, s.bloque_actual, s.iniciado_en, u.nombre_completo, u.usuario,
+        sb.materia_id, m.nombre AS materia_nombre, sb.orden AS bloque_orden,
+        sb.pausado_en, sb.iniciado_en AS bloque_iniciado_en,
+        sb.tiempo_limite_segundos, sb.tiempo_usado_segundos,
+        (SELECT COUNT(*) FROM simulacro_bloques b2 WHERE b2.simulacro_id = s.id) AS total_bloques
+      FROM simulacros s
+      JOIN usuarios u ON u.id = s.usuario_id
+      JOIN simulacro_bloques sb ON sb.simulacro_id = s.id AND sb.orden = s.bloque_actual
+      JOIN materias m ON m.id = sb.materia_id
+      WHERE s.estado = 'en_progreso'
+      ORDER BY s.iniciado_en DESC`);
+    const activos = r.rows.map(b => ({
+      simulacro_id: b.id,
+      estudiante: b.nombre_completo,
+      usuario: b.usuario,
+      usuario_id: b.usuario_id,
+      materia_nombre: b.materia_nombre,
+      bloque_orden: b.bloque_orden,
+      total_bloques: b.total_bloques,
+      pausado: !!b.pausado_en,
+      tiempo_restante_segundos: tiempoRestanteBloque({
+        tiempo_limite_segundos: b.tiempo_limite_segundos,
+        tiempo_usado_segundos: b.tiempo_usado_segundos,
+        iniciado_en: b.bloque_iniciado_en,
+        pausado_en: b.pausado_en
+      })
+    }));
+    res.json({ activos });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: pausar el simulacro de cualquier estudiante (congela su cronometro)
+app.put('/api/admin/simulacros/:id/pausar', requireAdmin, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1`, [req.params.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const b = await obtenerBloqueActual(db, req.params.id, s);
+    if (!b) return res.status(404).json({ error: 'Bloque actual no encontrado' });
+    if (b.finalizado_en) return res.status(400).json({ error: 'El bloque ya fue cerrado' });
+    if (!b.iniciado_en) return res.json({ message: 'El bloque aun no inicia', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
+    if (b.pausado_en) return res.json({ message: 'Simulacro ya pausado', pausado: true, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
+
+    await db.query(`UPDATE simulacro_bloques
+      SET tiempo_usado_segundos = tiempo_usado_segundos + EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - iniciado_en))::int,
+          pausado_en = CURRENT_TIMESTAMP
+      WHERE id = $1 AND pausado_en IS NULL AND finalizado_en IS NULL AND iniciado_en IS NOT NULL`, [b.id]);
+
+    const bPausado = (await db.query('SELECT * FROM simulacro_bloques WHERE id = $1', [b.id])).rows[0];
+    res.json({ message: 'Simulacro pausado por el administrador', pausado: true, tiempo_restante_segundos: tiempoRestanteBloque(bPausado), bloque: bPausado });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// Admin: reanudar el simulacro de cualquier estudiante
+app.put('/api/admin/simulacros/:id/reanudar', requireAdmin, apiLimiter, async (req, res) => {
+  try {
+    const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1`, [req.params.id]);
+    if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
+    const s = sim.rows[0];
+    if (s.estado !== 'en_progreso') return res.status(400).json({ error: 'El simulacro ya fue finalizado' });
+
+    const b = await obtenerBloqueActual(db, req.params.id, s);
+    if (!b) return res.status(404).json({ error: 'Bloque actual no encontrado' });
+    if (!b.pausado_en) return res.json({ message: 'El simulacro no estaba pausado', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
+
+    await db.query(`UPDATE simulacro_bloques SET pausado_en = NULL, iniciado_en = CURRENT_TIMESTAMP WHERE id = $1 AND pausado_en IS NOT NULL`, [b.id]);
+
+    b.pausado_en = null;
+    b.iniciado_en = new Date();
+    res.json({ message: 'Simulacro reanudado por el administrador', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -15,7 +15,18 @@ body{margin:0;background:#f1f5f9}
 .topo #areaSub{font-size:12px;font-weight:400;color:#64748b;display:block}
 .quiz-timer{font-size:22px;font-weight:700;color:#dc2626;background:#fee2e2;padding:8px 18px;border-radius:10px}
 .quiz-timer.low{animation:pulse 1s infinite}
+.quiz-timer.pausado{color:#b45309;background:#fef3c7}
 @keyframes pulse{0%,100%{opacity:1}50%{opacity:.55}}
+#pausarBtn{font-size:14px;font-weight:700;cursor:pointer;border:none;border-radius:10px;padding:10px 16px;color:#78350f;background:#fbbf24;display:flex;align-items:center;gap:8px;box-shadow:0 2px 8px rgba(245,158,11,.35)}
+#pausarBtn:hover{background:#f59e0b}
+#pausarBtn:disabled{opacity:.45;cursor:not-allowed}
+#pausaOverlay{display:none;position:fixed;inset:0;z-index:4000;background:rgba(15,23,42,.72);backdrop-filter:blur(3px);align-items:center;justify-content:center}
+#pausaOverlay.open{display:flex}
+.pausa-card{background:#fff;border-radius:18px;padding:34px 40px;max-width:420px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.pausa-card .icono{font-size:44px}
+.pausa-card h2{margin:12px 0 6px;font-size:22px;color:#1e293b}
+.pausa-card p{color:#64748b;font-size:14px;line-height:1.6;margin:0 0 14px}
+.pausa-card .restante{font-size:30px;font-weight:800;color:#b45309;font-family:monospace;margin-bottom:20px}
 .pv-wrap{max-width:900px;margin:24px auto;padding:0 20px}
 .pv-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
 .pv-header .n-preg{font-size:14px;color:#475569;font-weight:600}
@@ -71,7 +82,19 @@ body{margin:0;background:#f1f5f9}
 <div id="banner"></div>
 <div class="topo">
   <div class="area-title"><span id="areaNombre">Cargando simulacro&hellip;</span><span id="areaSub" class="area-sub"></span></div>
-  <div class="quiz-timer" id="quizTimer">--:--</div>
+  <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+    <button id="pausarBtn" onclick="pausarSimulacro()">&#9208; Pausar simulacro</button>
+    <div class="quiz-timer" id="quizTimer">--:--</div>
+  </div>
+</div>
+<div id="pausaOverlay">
+  <div class="pausa-card">
+    <div class="icono">&#9208;</div>
+    <h2>Simulacro pausado</h2>
+    <p>El tiempo est&aacute; congelado. Puedes cerrar la p&aacute;gina y volver cuando quieras: continuar&aacute;s justo donde quedaste.</p>
+    <div class="restante" id="pausaRestante">--:--</div>
+    <button class="btn btn-success" style="width:100%;font-size:16px;padding:14px" onclick="reanudarSimulacro()">&#9654; Reanudar simulacro</button>
+  </div>
 </div>
 <div id="debugLine"></div>
 <div class="pv-wrap" id="cuerpo"><div class="cargando">Cargando preguntas, un momento&hellip;</div></div>
@@ -103,9 +126,9 @@ body{margin:0;background:#f1f5f9}
 <script>
 var params=new URLSearchParams(window.location.search);
 var simulacroId=params.get('simulacro');
-var VERSION='8';
+var VERSION='9';
 var bloques=[], simulActual=null, bloqueActual=null, preguntas=[], respuestas={};
-var indexActual=0, timerInterval=null, ocupado=false;
+var indexActual=0, timerInterval=null, ocupado=false, bloquePausado=false, pausaEnviada=false;
 
 function debug(msg){
   var el=document.getElementById('debugLine');
@@ -264,12 +287,109 @@ function cargarPreguntas(){
         return;
       }
       indexActual=0;
+      if(d.pausado){
+        renderBloque();
+        mostrarPausa(d.tiempo_restante_segundos);
+        return;
+      }
       iniciarTimer(d.tiempo_limite_segundos, d.iniciado_en);
       renderBloque();
     }).catch(function(e){banner('Error cargando las preguntas: '+(e.message||'desconocido'));});
 }
 
 function clearTimer(){if(timerInterval){clearInterval(timerInterval);timerInterval=null;}}
+
+/* ---------- Pausa del simulacro (congela el cronometro) ---------- */
+function pintarRestante(seg){
+  var m=Math.floor(seg/60),s=seg%60;
+  var txt=m+':'+s.toString().padStart(2,'0');
+  var pr=document.getElementById('pausaRestante');
+  if(pr)pr.textContent='Tiempo restante: '+txt;
+  var t=document.getElementById('quizTimer');
+  if(t)t.textContent=txt;
+}
+
+function mostrarPausa(restante){
+  bloquePausado=true;
+  clearTimer();
+  var ov=document.getElementById('pausaOverlay');
+  if(ov)ov.classList.add('open');
+  var btn=document.getElementById('pausarBtn');
+  if(btn)btn.disabled=true;
+  var t=document.getElementById('quizTimer');
+  if(t)t.classList.add('pausado');
+  pintarRestante(Math.max(0,Math.round(restante||0)));
+  debug('Simulacro pausado, restante '+(restante||0)+'s');
+}
+
+function ocultarPausa(){
+  bloquePausado=false;
+  pausaEnviada=false;
+  var ov=document.getElementById('pausaOverlay');
+  if(ov)ov.classList.remove('open');
+  var btn=document.getElementById('pausarBtn');
+  if(btn)btn.disabled=false;
+  var t=document.getElementById('quizTimer');
+  if(t)t.classList.remove('pausado');
+}
+
+function pausarSimulacro(){
+  if(!bloqueActual||bloquePausado||bloqueActual.finalizado_en)return;
+  if(ocupado)return;
+  clearTimer();
+  fetch('/api/simulacros/'+simulacroId+'/pausar',{method:'PUT',cache:'no-store'})
+    .then(function(r){return r.json()})
+    .then(function(j){
+      pausaEnviada=true;
+      if(bloqueActual)bloqueActual.pausado_en=new Date().toISOString();
+      mostrarPausa(j.tiempo_restante_segundos);
+    })
+    .catch(function(){
+      pausaEnviada=false;
+      if(bloqueActual&&bloqueActual.iniciado_en&&bloqueActual.tiempo_limite_segundos){
+        var restante=(bloqueActual.tiempo_limite_segundos*1000-(Date.now()-new Date(bloqueActual.iniciado_en).getTime()))/1000;
+        if(restante>0)iniciarTimer(Math.max(1,Math.round(restante)),new Date().toISOString());
+        else debug('Pausa fallida y sin tiempo restante');
+      }
+      debug('Fallo la pausa, reintenta');
+    });
+}
+
+function reanudarSimulacro(){
+  if(!bloqueActual||!bloquePausado)return;
+  if(ocupado)return;
+  ocupado=true;
+  fetchJson('/api/simulacros/'+simulacroId+'/reanudar',{method:'PUT'}).then(function(j){
+    ocupado=false;
+    if(!j.ok){banner(j.data.error||('No se pudo reanudar (HTTP '+j.status+')'));return;}
+    ocultarPausa();
+    if(bloqueActual){
+      bloqueActual.pausado_en=null;
+      if(j.data.iniciado_en)bloqueActual.iniciado_en=j.data.iniciado_en;
+    }
+    iniciarTimer(j.data.tiempo_restante_segundos,new Date().toISOString());
+  }).catch(function(e){ocupado=false;banner('No se pudo reanudar: '+(e.message||'desconocido'));});
+}
+
+// Pausa automatica al salir del simulacro (cerrar pestana, cambiar de pestana, navegar)
+function pausaUrgente(){
+  if(bloquePausado||pausaEnviada)return;
+  if(!bloqueActual||bloqueActual.finalizado_en||bloqueActual.pausado_en)return;
+  var running=document.getElementById('quizTimer');
+  if(running&&running.textContent==='--:--')return;
+  pausaEnviada=true;
+  var url='/api/simulacros/'+simulacroId+'/pausar';
+  if(navigator.sendBeacon){
+    navigator.sendBeacon(url);
+  }else{
+    fetch(url,{method:'PUT',cache:'no-store',keepalive:true}).catch(function(){});
+  }
+  clearTimer();
+  bloquePausado=true;
+  debug('Pausa automatica al salir de la pagina');
+}
+window.addEventListener('pagehide',pausaUrgente);
+document.addEventListener('visibilitychange',function(){if(document.hidden)pausaUrgente();});
 
 function iniciarTimer(segundos,iniciadoEn){
   clearTimer();
@@ -343,6 +463,7 @@ function renderBloque(){
 }
 
 function seleccionar(pid,opt,el){
+  if(bloquePausado){banner('El simulacro est&aacute; pausado. Rean&uacute;dalo para responder.');return;}
   respuestas[pid]=opt;
   var grupo=el.parentElement.querySelectorAll('.option');
   for(var i=0;i<grupo.length;i++)grupo[i].classList.remove('selected');
@@ -360,6 +481,7 @@ function seleccionar(pid,opt,el){
 }
 
 function finalizarBloque(silencioso){
+  if(bloquePausado){banner('El simulacro est&aacute; pausado. Rean&uacute;dalo para finalizar.');return;}
   if(!silencioso){
     var haySiguiente=false;
     bloques.forEach(function(b){if(b.orden===bloqueActual.orden+1)haySiguiente=true;});

@@ -294,6 +294,8 @@ function loadHistorialSimulacros() {
       html += '<div class="card-header"><h3>&#127979; Simulacro ICFES</h3>';
       if (finalizado && s.puntaje_global != null) {
         html += '<span class="badge badge-active">' + s.puntaje_global + ' pts &middot; ' + (s.puntaje_global_nivel || 'â€”') + '</span>';
+      } else if (s.pausado) {
+        html += '<span class="badge badge-inactive">&#9208; En pausa</span>';
       } else {
         html += '<span class="badge badge-inactive">En progreso</span>';
       }
@@ -301,13 +303,17 @@ function loadHistorialSimulacros() {
 
       html += '<p style="color:#64748b">Materias: ' + s.total_bloques + '</p>';
       html += '<p style="color:#94a3b8;font-size:12px">Iniciado: ' + s.iniciado_en + '</p>';
+      if (!finalizado && s.pausado && s.tiempo_restante_segundos != null) {
+        var rm = Math.floor(s.tiempo_restante_segundos / 60), rs = s.tiempo_restante_segundos % 60;
+        html += '<p style="color:#b45309;font-size:12px">&#9208; Tiempo congelado, restante: ' + rm + ':' + rs.toString().padStart(2, '0') + ' min del bloque actual</p>';
+      }
       if (finalizado && s.finalizado_en) html += '<p style="color:#94a3b8;font-size:12px">Finalizado: ' + s.finalizado_en + '</p>';
 
       html += '<div class="actions" style="margin-top:8px">';
       if (finalizado) {
         html += '<a href="/student/simulacro-resultados.html?simulacro=' + s.id + '" class="btn btn-sm btn-primary">&#128269; Ver Informe</a>';
       } else {
-        html += '<a href="/student/simulacro-presentar.html?simulacro=' + s.id + '&v=8" class="btn btn-sm btn-secondary">&#9654; Continuar simulacro</a>';
+        html += '<a href="/student/simulacro-presentar.html?simulacro=' + s.id + '&v=9" class="btn btn-sm btn-secondary">&#9654; Continuar simulacro</a>';
       }
       html += '</div></div>';
       h.innerHTML += html;
