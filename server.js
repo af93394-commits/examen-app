@@ -1212,7 +1212,8 @@ async function obtenerBloqueActual(db, simulacroId, s) {
 }
 
 // Pausar el bloque actual: congela el cronometro (el tiempo usado hasta ahora se acumula)
-app.put('/api/simulacros/:id/pausar', requireAuth, apiLimiter, async (req, res) => {
+// Se registra en PUT y POST porque sendBeacon (auto-pausa al salir) solo puede enviar POST
+async function pausarSimulacroEstudiante(req, res) {
   try {
     const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
     if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
@@ -1233,10 +1234,12 @@ app.put('/api/simulacros/:id/pausar', requireAuth, apiLimiter, async (req, res) 
     const bPausado = (await db.query('SELECT * FROM simulacro_bloques WHERE id = $1', [b.id])).rows[0];
     res.json({ message: 'Simulacro pausado. El tiempo queda congelado.', pausado: true, tiempo_restante_segundos: tiempoRestanteBloque(bPausado), bloque: bPausado });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
+app.put('/api/simulacros/:id/pausar', requireAuth, apiLimiter, pausarSimulacroEstudiante);
+app.post('/api/simulacros/:id/pausar', requireAuth, apiLimiter, pausarSimulacroEstudiante);
 
 // Reanudar el bloque pausado: relanza el cronometro con el tiempo restante acumulado
-app.put('/api/simulacros/:id/reanudar', requireAuth, apiLimiter, async (req, res) => {
+async function reanudarSimulacroEstudiante(req, res) {
   try {
     const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1 AND usuario_id = $2`, [req.params.id, req.session.user.id]);
     if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
@@ -1254,7 +1257,9 @@ app.put('/api/simulacros/:id/reanudar', requireAuth, apiLimiter, async (req, res
     b.iniciado_en = new Date();
     res.json({ message: 'Simulacro reanudado. El cronometro sigue desde donde quedó.', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), iniciado_en: b.iniciado_en.toISOString(), bloque: b });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
+app.put('/api/simulacros/:id/reanudar', requireAuth, apiLimiter, reanudarSimulacroEstudiante);
+app.post('/api/simulacros/:id/reanudar', requireAuth, apiLimiter, reanudarSimulacroEstudiante);
 
 // Iniciar bloque (backend arranca el cronometro)
 app.post('/api/simulacros/:id/bloques/:bloqueId/iniciar', requireAuth, apiLimiter, async (req, res) => {
@@ -1571,7 +1576,7 @@ app.get('/api/admin/simulacros/activos', requireAdmin, apiLimiter, async (req, r
 });
 
 // Admin: pausar el simulacro de cualquier estudiante (congela su cronometro)
-app.put('/api/admin/simulacros/:id/pausar', requireAdmin, apiLimiter, async (req, res) => {
+async function pausarSimulacroAdmin(req, res) {
   try {
     const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1`, [req.params.id]);
     if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
@@ -1592,10 +1597,12 @@ app.put('/api/admin/simulacros/:id/pausar', requireAdmin, apiLimiter, async (req
     const bPausado = (await db.query('SELECT * FROM simulacro_bloques WHERE id = $1', [b.id])).rows[0];
     res.json({ message: 'Simulacro pausado por el administrador', pausado: true, tiempo_restante_segundos: tiempoRestanteBloque(bPausado), bloque: bPausado });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
+app.put('/api/admin/simulacros/:id/pausar', requireAdmin, apiLimiter, pausarSimulacroAdmin);
+app.post('/api/admin/simulacros/:id/pausar', requireAdmin, apiLimiter, pausarSimulacroAdmin);
 
 // Admin: reanudar el simulacro de cualquier estudiante
-app.put('/api/admin/simulacros/:id/reanudar', requireAdmin, apiLimiter, async (req, res) => {
+async function reanudarSimulacroAdmin(req, res) {
   try {
     const sim = await db.query(`SELECT * FROM simulacros WHERE id = $1`, [req.params.id]);
     if (sim.rows.length === 0) return res.status(404).json({ error: 'Simulacro no encontrado' });
@@ -1612,7 +1619,9 @@ app.put('/api/admin/simulacros/:id/reanudar', requireAdmin, apiLimiter, async (r
     b.iniciado_en = new Date();
     res.json({ message: 'Simulacro reanudado por el administrador', pausado: false, tiempo_restante_segundos: tiempoRestanteBloque(b), bloque: b });
   } catch (e) { res.status(500).json({ error: e.message }); }
-});
+}
+app.put('/api/admin/simulacros/:id/reanudar', requireAdmin, apiLimiter, reanudarSimulacroAdmin);
+app.post('/api/admin/simulacros/:id/reanudar', requireAdmin, apiLimiter, reanudarSimulacroAdmin);
 
 // ============ ADMIN BADGES ============
 app.get('/api/admin/badges', requireAdmin, apiLimiter, async (req, res) => {

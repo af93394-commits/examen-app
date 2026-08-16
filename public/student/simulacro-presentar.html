@@ -51,7 +51,7 @@ body{margin:0;background:#f1f5f9}
 #banner{display:none;position:fixed;top:0;left:0;right:0;z-index:5000;background:#dc2626;color:#fff;padding:12px 20px;font-size:14px;font-weight:600;box-shadow:0 2px 10px rgba(0,0,0,.2)}
 #banner a{color:#fff;text-decoration:underline;margin-left:10px;cursor:pointer}
 #banner .cerrar{float:right;cursor:pointer;font-weight:700}
-#debugLine{font-size:11px;color:#94a3b8;font-family:monospace;word-break:break-all;padding:2px 20px}
+#debugLine{display:none;font-size:11px;color:#94a3b8;font-family:monospace;word-break:break-all;padding:2px 20px}
 .cargando{display:flex;justify-content:center;padding:60px 0;color:#64748b;font-size:15px}
 #borradorBtn{position:fixed;right:22px;bottom:22px;z-index:200;background:#1e293b;color:#fff;border:none;border-radius:30px;padding:13px 20px;font-size:14px;font-weight:700;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);display:flex;align-items:center;gap:8px}
 #borradorBtn:hover{background:#334155}
@@ -126,14 +126,14 @@ body{margin:0;background:#f1f5f9}
 <script>
 var params=new URLSearchParams(window.location.search);
 var simulacroId=params.get('simulacro');
-var VERSION='9';
+var VERSION='10';
 var bloques=[], simulActual=null, bloqueActual=null, preguntas=[], respuestas={};
 var indexActual=0, timerInterval=null, ocupado=false, bloquePausado=false, pausaEnviada=false;
 
 function debug(msg){
+  if(window.console)console.log('[simulacro] '+msg);
   var el=document.getElementById('debugLine');
   if(el){
-    el.style.display='block';
     el.textContent=new Date().toLocaleTimeString()+' '+msg;
   }
 }
@@ -388,8 +388,36 @@ function pausaUrgente(){
   bloquePausado=true;
   debug('Pausa automatica al salir de la pagina');
 }
+
+// Al volver a la pestana: re-sincroniza el estado con el servidor y muestra el overlay de pausa
+function refrescarEstadoPausa(){
+  if(!bloqueActual)return;
+  fetchJson('/api/simulacros/'+simulacroId,{cache:'no-store',timeoutMs:15000}).then(function(j){
+    if(!j.ok)return;
+    var sim=j.data.simulacro, bs=j.data.bloques||[];
+    var b=null;
+    bs.forEach(function(x){if(x.orden===sim.bloque_actual)b=x;});
+    if(!b){ocultarPausa();return;}
+    if(!b.pausado_en){
+      ocultarPausa();
+      return;
+    }
+    bloqueActual.pausado_en=b.pausado_en;
+    bloqueActual.iniciado_en=b.iniciado_en;
+    bloqueActual.tiempo_usado_segundos=b.tiempo_usado_segundos||0;
+    bloqueActual.tiempo_limite_segundos=b.tiempo_limite_segundos;
+    var rest=Math.max(0,parseInt(b.tiempo_limite_segundos||0)-parseInt(b.tiempo_usado_segundos||0));
+    mostrarPausa(rest);
+  }).catch(function(){});
+}
 window.addEventListener('pagehide',pausaUrgente);
-document.addEventListener('visibilitychange',function(){if(document.hidden)pausaUrgente();});
+document.addEventListener('visibilitychange',function(){
+  if(document.hidden){
+    pausaUrgente();
+  }else if(bloquePausado&&pausaEnviada){
+    refrescarEstadoPausa();
+  }
+});
 
 function iniciarTimer(segundos,iniciadoEn){
   clearTimer();

@@ -25,9 +25,9 @@
 <div style="margin-bottom:16px">
 <h2 style="margin-bottom:4px">Simulacros en curso</h2>
 <p style="color:#64748b;font-size:13px">Pausa o reanuda el simulacro de cualquier estudiante. Al pausar se congela el cron&oacute;metro; el estudiante contin&uacute;a donde qued&oacute;.</p>
-<div style="margin-bottom:10px"><button class="btn btn-sm btn-secondary" onclick="cargarSimulacrosActivos()">&#8635; Actualizar</button></div>
+<div style="margin-bottom:10px;display:flex;align-items:center;gap:10px"><button class="btn btn-sm btn-secondary" onclick="cargarSimulacrosActivos()">&#8635; Actualizar</button><span id="msgSimulacros" style="font-size:13px;color:#16a34a"></span></div>
 <div id="tablaSimulacros" class="table-container">
-<table><thead><tr><th>Estudiante</th><th>Materia actual</th><th>Tiempo restante</th><th>Estado</th><th>Acciones</th></tr></thead>
+<table><thead><tr><th>Estudiante</th><th>Materia actual</th><th>Tiempo restante (m:ss)</th><th>Estado</th><th>Acciones</th></tr></thead>
 <tbody id="cuerpoSimulacros"></tbody></table>
 </div>
 </div>
@@ -65,6 +65,12 @@ fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).
   loadEstudiantes();
 }).catch(function() { window.location.href = '/'; });
 
+setInterval(function() {
+  if (document.getElementById('vistaEstudiantes') && document.getElementById('vistaEstudiantes').style.display !== 'none') {
+    cargarSimulacrosActivos();
+  }
+}, 30000);
+
 function fmtTiempo(seg) {
   seg = Math.max(0, Math.round(seg || 0));
   var m = Math.floor(seg / 60), s = seg % 60;
@@ -85,7 +91,7 @@ function cargarSimulacrosActivos() {
       var row = '<tr>';
       row += '<td><strong>' + s.estudiante + '</strong><br><span style="color:#94a3b8;font-size:12px">' + s.usuario + '</span></td>';
       row += '<td>' + s.materia_nombre + ' (bloque ' + (s.bloque_orden + 1) + '/' + s.total_bloques + ')</td>';
-      row += '<td style="font-weight:700;font-family:monospace">' + fmtTiempo(s.tiempo_restante_segundos) + ' min</td>';
+      row += '<td style="font-weight:700;font-family:monospace">' + fmtTiempo(s.tiempo_restante_segundos) + '</td>';
       row += '<td>' + (s.pausado
         ? '<span class="badge badge-inactive">&#9208; Pausado</span>'
         : '<span class="badge badge-active">En curso</span>') + '</td>';
@@ -101,18 +107,28 @@ function cargarSimulacrosActivos() {
   });
 }
 
+var msgTimer = null;
+function mostrarMsg(texto, ok) {
+  var el = document.getElementById('msgSimulacros');
+  if (!el) return;
+  el.textContent = texto;
+  el.style.color = ok ? '#16a34a' : '#dc2626';
+  if (msgTimer) clearTimeout(msgTimer);
+  msgTimer = setTimeout(function() { el.textContent = ''; }, 4000);
+}
+
 function pausarSimAdmin(id) {
   fetch('/api/admin/simulacros/' + id + '/pausar', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(d) {
-    alert(d.message || 'Simulacro pausado');
+    mostrarMsg(d.message || d.error || 'Simulacro pausado', !(d.error));
     cargarSimulacrosActivos();
-  }).catch(function() { alert('No se pudo pausar el simulacro'); });
+  }).catch(function() { mostrarMsg('No se pudo pausar el simulacro', false); });
 }
 
 function reanudarSimAdmin(id) {
   fetch('/api/admin/simulacros/' + id + '/reanudar', { method: 'PUT' }).then(function(r) { return r.json(); }).then(function(d) {
-    alert(d.message || 'Simulacro reanudado');
+    mostrarMsg(d.message || d.error || 'Simulacro reanudado', !(d.error));
     cargarSimulacrosActivos();
-  }).catch(function() { alert('No se pudo reanudar el simulacro'); });
+  }).catch(function() { mostrarMsg('No se pudo reanudar el simulacro', false); });
 }
 
 function loadEstudiantes() {

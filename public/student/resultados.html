@@ -45,7 +45,7 @@
 <nav>
 <a href="/student/dashboard.html"><span class="icon">&#128200;</span><span>Inicio</span></a>
 <a href="/student/simulacro-config.html"><span class="icon">&#127979;</span><span>Simulacro ICFES</span></a>
-<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>EstadÃ­sticas</span></a>
+<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
 <a href="/student/resultados.html" class="active"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
 <a href="/student/insignias.html"><span class="icon">&#127942;</span><span>Insignias</span></a>
 </nav>
@@ -293,7 +293,7 @@ function loadHistorialSimulacros() {
       var html = '<div class="card">';
       html += '<div class="card-header"><h3>&#127979; Simulacro ICFES</h3>';
       if (finalizado && s.puntaje_global != null) {
-        html += '<span class="badge badge-active">' + s.puntaje_global + ' pts &middot; ' + (s.puntaje_global_nivel || 'â€”') + '</span>';
+        html += '<span class="badge badge-active">' + s.puntaje_global + ' pts &middot; ' + (s.puntaje_global_nivel || '—') + '</span>';
       } else if (s.pausado) {
         html += '<span class="badge badge-inactive">&#9208; En pausa</span>';
       } else {
@@ -313,7 +313,7 @@ function loadHistorialSimulacros() {
       if (finalizado) {
         html += '<a href="/student/simulacro-resultados.html?simulacro=' + s.id + '" class="btn btn-sm btn-primary">&#128269; Ver Informe</a>';
       } else {
-        html += '<a href="/student/simulacro-presentar.html?simulacro=' + s.id + '&v=9" class="btn btn-sm btn-secondary">&#9654; Continuar simulacro</a>';
+        html += '<a href="/student/simulacro-presentar.html?simulacro=' + s.id + '&v=10" class="btn btn-sm btn-secondary">&#9654; Continuar simulacro</a>';
       }
       html += '</div></div>';
       h.innerHTML += html;

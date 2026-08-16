@@ -63,7 +63,7 @@ function load() {
         fetch('/api/preguntas?materia_id=' + m.id).then(function(r) { return r.json(); }),
         fetch('/api/cuestionarios?materia_id=' + m.id).then(function(r) { return r.json(); })
       ]).then(function(results) {
-        var numPreg = results[0].preguntas.length;
+        var numPreg = results[0].total !== undefined ? results[0].total : results[0].preguntas.length;
         var numCuest = results[1].cuestionarios.length;
         var row = '<tr><td>' + m.id + '</td><td><strong>' + m.nombre + '</strong></td>';
         row += '<td>' + (m.descripcion || '-') + '</td>';

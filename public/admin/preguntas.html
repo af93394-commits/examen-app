@@ -55,7 +55,7 @@
 <form id="preguntaForm" enctype="multipart/form-data">
 <input type="hidden" id="editId">
 <div class="form-group"><label>Materia</label><select id="fMateria" required><option value="">Seleccione materia...</option></select></div>
-<div class="form-group"><label>Cuestionario (opcional - para asociar directamente)</label><select id="fCuestionario"><option value="">Sin asociar a cuestionario...</option></select></div>
+<div class="form-group"><label>Cuestionario (opcional - solo al crear)</label><select id="fCuestionario"><option value="">Sin asociar a cuestionario...</option></select></div>
 <div class="form-group"><label>Texto de lectura (opcional - para preguntas de Lectura Crítica)</label><textarea id="fTextoLectura" rows="4" placeholder="Pegar aquí el texto de lectura que será compartido entre varias preguntas..."></textarea></div>
 <div class="form-group"><label>Texto de la pregunta</label><textarea id="fTexto" rows="3" required></textarea></div>
 <div class="form-group"><label>Imagen (opcional)</label>
@@ -303,6 +303,7 @@ function openModal() {
   document.getElementById('editId').value = '';
   document.getElementById('fTextoLectura').value = '';
   document.getElementById('fCuestionario').value = '';
+  document.getElementById('fCuestionario').disabled = false;
   imagenActual = null;
   imagenPegada = null;
   imagenEliminada = false;
@@ -343,6 +344,8 @@ function editPregunta(p) {
   document.getElementById('fOpcC').value = p.opcion_c;
   document.getElementById('fOpcD').value = p.opcion_d;
   document.getElementById('fCorrecta').value = p.respuesta_correcta;
+  document.getElementById('fCuestionario').value = '';
+  document.getElementById('fCuestionario').disabled = true;
   if (p.imagen) { pi.src = p.imagen; pi.style.display = 'block'; btnRemove.style.display = 'block'; } else { pi.style.display = 'none'; pi.src = ''; btnRemove.style.display = 'none'; }
   ['A','B','C','D'].forEach(function(l) {
     var key = 'imagen_opcion_' + l.toLowerCase();
@@ -370,7 +373,7 @@ document.getElementById('preguntaForm').addEventListener('submit', async functio
   fd.append('respuesta_correcta', document.getElementById('fCorrecta').value);
   fd.append('materia_id', document.getElementById('fMateria').value || '1');
   fd.append('texto_lectura', document.getElementById('fTextoLectura').value);
-  fd.append('cuestionario_id', document.getElementById('fCuestionario').value || '');
+  if (!editing) fd.append('cuestionario_id', document.getElementById('fCuestionario').value || '');
   // Solo enviar imagen si se selecciono una nueva imagen o si es edicion con imagen existente
   if (imagenNuevaSeleccionada && fi.files[0]) {
     fd.append('imagen', fi.files[0]);

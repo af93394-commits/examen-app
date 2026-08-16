@@ -102,7 +102,7 @@
 
 <script>
 var materiaId = new URLSearchParams(window.location.search).get('id');
-var editingPreg = false, imagenActual = null, editingCuest = false, currentCuestId = 0;
+var editingPreg = false, imagenActual = null, editingCuest = false, currentCuestId = 0, currentCuestActivo = 1;
 var imagenNuevaSeleccionada = false;
 
 if (!materiaId) window.location.href = '/admin/materias.html';
@@ -252,6 +252,7 @@ function loadCuestionarios() {
 
 function openCuestModal() {
   editingCuest = false;
+  currentCuestActivo = 1;
   document.getElementById('cuestModalTitle').textContent = 'Nuevo Cuestionario';
   document.getElementById('cuestForm').reset();
   document.getElementById('editCuestId').value = '';
@@ -261,6 +262,7 @@ function openCuestModal() {
 
 function editCuest(q) {
   editingCuest = true;
+  currentCuestActivo = (q.activo === 0 || q.activo === '0') ? 0 : 1;
   document.getElementById('cuestModalTitle').textContent = 'Editar Cuestionario';
   document.getElementById('editCuestId').value = q.id;
   document.getElementById('fCTitulo').value = q.titulo;
@@ -280,7 +282,7 @@ document.getElementById('cuestForm').addEventListener('submit', async function(e
     materia_id: materiaId
   };
   if (editingCuest) {
-    body.activo = 0;
+    body.activo = currentCuestActivo;
     await fetch('/api/cuestionarios/' + document.getElementById('editCuestId').value, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
     });
