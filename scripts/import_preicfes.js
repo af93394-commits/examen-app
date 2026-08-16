@@ -26,7 +26,7 @@ require('dotenv').config();
 
 const db = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
 
-const AGRUPACIONES = ['entrenamiento', 'grupo_fenix', 'predicciones', 'milton_ochoa', 'ascensus', 'pack_estudios', 'varios'];
+const AGRUPACIONES = ['entrenando'];
 
 function normTexto(t) {
   return (t || '')
