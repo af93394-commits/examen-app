@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Gestionar Cuestionarios</title>
+<title>PreICFES Varios</title>
 <link rel="stylesheet" href="/css/styles.css">
 </head>
 <body>
@@ -12,8 +12,8 @@
 <a href="/admin/dashboard.html"><span class="icon">&#128200;</span><span>Dashboard</span></a>
 <a href="/admin/usuarios.html"><span class="icon">&#128100;</span><span>Usuarios</span></a>
 <a href="/admin/preguntas.html"><span class="icon">&#128196;</span><span>Preguntas</span></a>
-<a href="/admin/cuestionarios.html" class="active"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
-<a href="/admin/preicfes-varios.html"><span class="icon">&#127919;</span><span>PreICFES Varios</span></a>
+<a href="/admin/cuestionarios.html"><span class="icon">&#128221;</span><span>Cuestionarios</span></a>
+<a href="/admin/preicfes-varios.html" class="active"><span class="icon">&#127919;</span><span>PreICFES Varios</span></a>
 <a href="/admin/materias.html"><span class="icon">&#128218;</span><span>Materias</span></a>
 <a href="/admin/informes.html"><span class="icon">&#128202;</span><span>Informes</span></a>
 <a href="/admin/badges.html"><span class="icon">&#127942;</span><span>Insignias</span></a>
@@ -21,8 +21,8 @@
 <div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
 </div>
 <div class="main-content">
-<div class="page-header"><h1>Cuestionarios</h1><button class="btn btn-primary" onclick="openNew()">+ Nuevo Cuestionario</button></div>
-<div id="listaCuestionarios"></div>
+<div class="page-header"><h1>Cuestionarios PreICFES Varios</h1><small style="color:#64748b">Cuadernillos mixtos importados por carpetas (entrenamiento, grupo fenix, predicciones...)</small></div>
+<div id="listaAgrupaciones"></div>
 </div>
 
 <div class="modal-overlay" id="modalNew">
@@ -30,10 +30,12 @@
 <button class="close" onclick="closeNew()">&times;</button>
 <h2>Nuevo Cuestionario</h2>
 <form id="newForm">
-<div class="form-group"><label>Materia</label><select id="fMateria"><option value="">Sin materia</option></select></div>
+<input type="hidden" id="newAgrupacion">
+<div class="form-group"><label>Agrupaci&oacute;n</label><select id="fAgrupacion"></select></div>
 <div class="form-group"><label>Titulo</label><input type="text" id="fTitulo" required></div>
 <div class="form-group"><label>Descripcion</label><textarea id="fDesc"></textarea></div>
-<div class="form-group"><label>Tiempo limite (minutos)</label><input type="number" id="fTiempo" value="60" min="5" max="300"></div>
+<div class="form-group"><label>Tiempo limite (minutos)</label><input type="number" id="fTiempo" value="90" min="5" max="300"></div>
+<p style="color:#64748b;font-size:13px">Los cuestionarios de este m&oacute;dulo son mixtos (todas las materias), aparecen solo en la secci&oacute;n PreICFES Varios del estudiante.</p>
 <button type="submit" class="btn btn-primary btn-block">Crear Cuestionario</button>
 </form>
 </div>
@@ -45,7 +47,6 @@
 <h2>Editar Cuestionario</h2>
 <form id="editForm">
 <input type="hidden" id="eId">
-<div class="form-group"><label>Materia</label><select id="eMateria"><option value="">Sin materia</option></select></div>
 <div class="form-group"><label>Titulo</label><input type="text" id="eTitulo" required></div>
 <div class="form-group"><label>Descripcion</label><textarea id="eDesc"></textarea></div>
 <div class="form-group"><label>Tiempo limite (minutos)</label><input type="number" id="eTiempo" min="5" max="300"></div>
@@ -72,65 +73,92 @@
 </div>
 
 <script>
+var AGRUPACIONES = [
+  { id: 'entrenamiento', label: 'Entrenamiento', icon: '&#127946;' },
+  { id: 'grupo_fenix', label: 'Grupo Fenix', icon: '&#129351;' },
+  { id: 'predicciones', label: 'Predicciones', icon: '&#128302;' },
+  { id: 'milton_ochoa', label: 'Milton Ochoa', icon: '&#128214;' },
+  { id: 'ascensus', label: 'Ascensus', icon: '&#9992;' },
+  { id: 'pack_estudios', label: 'Pack de Estudios', icon: '&#128218;' },
+  { id: 'varios', label: 'Varios', icon: '&#128279;' }
+];
 var materiasList = [], currentCuestId = 0;
 
 fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
   document.getElementById('userName').textContent = d.user.nombre;
   if (d.user.rol !== 'admin') window.location.href = '/';
+  document.getElementById('fAgrupacion').innerHTML = AGRUPACIONES.map(function(a) {
+    return '<option value="' + a.id + '">' + a.label + '</option>';
+  }).join('');
   loadMaterias();
 }).catch(function() { window.location.href = '/'; });
 
 function loadMaterias() {
   fetch('/api/materias').then(function(r) { return r.json(); }).then(function(d) {
     materiasList = d.materias;
-    var selNew = document.getElementById('fMateria');
-    var selEdit = document.getElementById('eMateria');
-    var selFiltro = document.getElementById('filtroAsigMateria');
+    var sel = document.getElementById('filtroAsigMateria');
     materiasList.forEach(function(m) {
-      selNew.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
-      selEdit.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
-      selFiltro.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
+      sel.innerHTML += '<option value="' + m.id + '">' + m.nombre + '</option>';
     });
     load();
   });
 }
 
 function load() {
-  fetch('/api/cuestionarios').then(function(r) { return r.json(); }).then(function(d) {
-    var c = document.getElementById('listaCuestionarios');
-    c.innerHTML = '';
+  var cont = document.getElementById('listaAgrupaciones');
+  cont.innerHTML = '';
+  AGRUPACIONES.forEach(function(ag, idx) {
+    var section = document.createElement('div');
+    section.className = 'materia-section';
+    section.id = 'sec-' + ag.id;
+    var html = '<div class="card" style="margin-bottom:18px;padding:18px">';
+    html += '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">';
+    html += '<h2 style="margin:0;font-size:18px;color:#1e293b">' + ag.icon + ' ' + ag.label + '</h2>';
+    html += '<button class="btn btn-primary" onclick="openNew(\'' + ag.id + '\')">+ Nuevo</button>';
+    html += '</div><div id="grid-' + ag.id + '"></div></div>';
+    section.innerHTML = html;
+    cont.appendChild(section);
+    loadAgrupacion(ag.id);
+  });
+}
+
+function loadAgrupacion(agrupacion) {
+  var grid = document.getElementById('grid-' + agrupacion);
+  if (!grid) return;
+  fetch('/api/cuestionarios?agrupacion=' + agrupacion).then(function(r) { return r.json(); }).then(function(d) {
+    grid.innerHTML = '';
     if (d.cuestionarios.length === 0) {
-      c.innerHTML = '<div class="card empty-state"><div class="icon">&#128221;</div><p>No hay cuestionarios creados</p></div>';
+      grid.innerHTML = '<p style="color:#94a3b8;font-size:13px">No hay cuestionarios en esta agrupaci&oacute;n</p>';
       return;
     }
     d.cuestionarios.forEach(function(q) {
-      var materia = q.materia_nombre || 'Sin materia';
       var estadoBadge = q.activo ? 'badge-active' : 'badge-inactive';
       var estadoLabel = q.activo ? 'Activo' : 'Inactivo';
       var publishLabel = q.activo ? '&#128065; Despublicar' : '&#128221; Publicar';
       var toggleClass = q.activo ? 'btn-secondary' : 'btn-success';
       var newActivo = q.activo ? 0 : 1;
-      var totalP = q.total_preguntas || 0;
-      var html = '<div class="card">';
+      var html = '<div class="card" style="margin-bottom:12px">';
       html += '<div class="card-header"><h3>' + q.titulo + '</h3>';
-      html += '<div><span class="badge badge-admin" style="margin-right:6px">' + materia + '</span>';
-      html += '<span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></div></div>';
+      html += '<div><span class="badge ' + estadoBadge + '">' + estadoLabel + '</span></div></div>';
       if (q.descripcion) html += '<p style="color:#64748b;margin-bottom:8px">' + q.descripcion + '</p>';
-      html += '<p style="color:#64748b;margin-bottom:12px">' + totalP + ' preguntas | Tiempo: ' + q.tiempo_limite + ' min</p>';
+      html += '<p style="color:#64748b;margin-bottom:12px">' + (q.total_preguntas || 0) + ' preguntas | Tiempo: ' + q.tiempo_limite + ' min</p>';
       html += '<div class="actions">';
       html += '<button class="btn btn-sm btn-primary" onclick="openAsig(' + q.id + ',\'' + q.titulo.replace(/'/g, "\\'") + '\')">&#128196; Asignar Preguntas</button> ';
       html += '<button class="btn btn-sm btn-secondary" onclick="editCuest(' + JSON.stringify(q).replace(/'/g, '&#39;').replace(/"/g, '&quot;') + ')">&#9998; Editar</button> ';
       html += '<button class="btn btn-sm ' + toggleClass + '" onclick="togglePublicar(' + q.id + ',' + newActivo + ')">' + publishLabel + '</button> ';
       html += '<button class="btn btn-sm btn-danger" onclick="deleteCuest(' + q.id + ')">&#128465; Eliminar</button>';
       html += '</div></div>';
-      c.innerHTML += html;
+      grid.innerHTML += html;
     });
   });
 }
 
-function openNew() {
-  document.getElementById('fMateria').value = '';
+function openNew(agrupacion) {
+  document.getElementById('newAgrupacion').value = agrupacion || AGRUPACIONES[0].id;
+  document.getElementById('fAgrupacion').value = document.getElementById('newAgrupacion').value;
   document.getElementById('newForm').reset();
+  document.getElementById('newAgrupacion').value = agrupacion || AGRUPACIONES[0].id;
+  document.getElementById('fAgrupacion').value = document.getElementById('newAgrupacion').value;
   document.getElementById('modalNew').classList.add('active');
 }
 function closeNew() { document.getElementById('modalNew').classList.remove('active'); }
@@ -144,7 +172,8 @@ document.getElementById('newForm').addEventListener('submit', async function(e) 
       titulo: document.getElementById('fTitulo').value,
       descripcion: document.getElementById('fDesc').value,
       tiempo_limite: parseInt(document.getElementById('fTiempo').value),
-      materia_id: document.getElementById('fMateria').value || null
+      materia_id: null,
+      agrupacion: document.getElementById('fAgrupacion').value
     })
   });
   closeNew();
@@ -153,7 +182,6 @@ document.getElementById('newForm').addEventListener('submit', async function(e) 
 
 function editCuest(q) {
   document.getElementById('eId').value = q.id;
-  document.getElementById('eMateria').value = q.materia_id || '';
   document.getElementById('eTitulo').value = q.titulo;
   document.getElementById('eDesc').value = q.descripcion || '';
   document.getElementById('eTiempo').value = q.tiempo_limite;
@@ -173,7 +201,7 @@ document.getElementById('editForm').addEventListener('submit', async function(e)
       descripcion: document.getElementById('eDesc').value,
       tiempo_limite: parseInt(document.getElementById('eTiempo').value),
       activo: parseInt(document.getElementById('eActivo').value),
-      materia_id: document.getElementById('eMateria').value || null
+      materia_id: null
     })
   });
   closeEdit();

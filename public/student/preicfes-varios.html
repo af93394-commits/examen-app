@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>PreICFES Varios</title>
+<link rel="stylesheet" href="/css/styles.css">
+<style>
+.agrup-section{margin-bottom:28px}
+.agrup-header{display:flex;align-items:center;gap:12px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #e2e8f0}
+.agrup-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0;background:#f1f5f9;color:#1e293b}
+.agrup-header h2{font-size:18px;color:#1e293b;margin:0}
+.agrup-header .agrup-count{font-size:13px;color:#64748b;font-weight:400;margin-left:auto}
+.cue-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.cue-card{background:#fff;border-radius:10px;padding:18px;box-shadow:0 1px 3px rgba(0,0,0,.08);border:1px solid #f1f5f9;transition:all .2s;position:relative;overflow:hidden}
+.cue-card:hover{box-shadow:0 4px 12px rgba(0,0,0,.1);transform:translateY(-2px)}
+.cue-card .cue-title{font-size:15px;font-weight:600;color:#1e293b;margin-bottom:8px;line-height:1.4}
+.cue-card .cue-meta{display:flex;gap:12px;font-size:12px;color:#64748b;margin-bottom:12px}
+.cue-card .cue-meta span{display:flex;align-items:center;gap:4px}
+.cue-card .cue-actions{display:flex;justify-content:space-between;align-items:center}
+.cue-badge{font-size:11px;padding:3px 8px;border-radius:12px;font-weight:600}
+.cue-badge.pending{background:#fef3c7;color:#b45309}
+.cue-badge.done{background:#dcfce7;color:#16a34a}
+</style>
+</head>
+<body>
+<div class="sidebar">
+<div class="brand"><h2>&#128218; Estudiante</h2><small>ICFES Cuestionarios</small></div>
+<nav>
+<a href="/student/dashboard.html"><span class="icon">&#128200;</span><span>Inicio</span></a>
+<a href="/student/preicfes-varios.html" class="active"><span class="icon">&#127919;</span><span>PreICFES Varios</span></a>
+<a href="/student/simulacro-config.html"><span class="icon">&#127979;</span><span>Simulacro ICFES</span></a>
+<a href="/student/estadisticas.html"><span class="icon">&#128202;</span><span>Estadísticas</span></a>
+<a href="/student/resultados.html"><span class="icon">&#128220;</span><span>Mis Resultados</span></a>
+<a href="/student/insignias.html"><span class="icon">&#127942;</span><span>Insignias</span></a>
+</nav>
+<div class="user-info"><span id="userName"></span><a onclick="logout()">Salir</a></div>
+</div>
+<div class="main-content">
+<div class="page-header"><h1>Cuestionarios PreICFES Varios</h1><small style="color:#64748b">Cuadernillos de preparaci&oacute;n por colecciones</small></div>
+<div id="agrupacionesContainer"></div>
+</div>
+<script>
+var AGRUPACIONES = [
+  { id: 'entrenamiento', label: 'Entrenamiento', icon: '&#127946;', color: '#2563eb' },
+  { id: 'grupo_fenix', label: 'Grupo Fenix', icon: '&#129351;', color: '#dc2626' },
+  { id: 'predicciones', label: 'Predicciones', icon: '&#128302;', color: '#8b5cf6' },
+  { id: 'milton_ochoa', label: 'Milton Ochoa', icon: '&#128214;', color: '#16a34a' },
+  { id: 'ascensus', label: 'Ascensus', icon: '&#9992;', color: '#f59e0b' },
+  { id: 'pack_estudios', label: 'Pack de Estudios', icon: '&#128218;', color: '#0ea5e9' },
+  { id: 'varios', label: 'Varios', icon: '&#128279;', color: '#64748b' }
+];
+var intentadosSet = new Set();
+
+fetch('/api/sesion').then(function(r) { if (!r.ok) throw 0; return r.json(); }).then(function(d) {
+  document.getElementById('userName').textContent = d.user.nombre;
+  if (d.user.rol !== 'estudiante') window.location.href = '/admin/dashboard.html';
+  loadAll();
+}).catch(function() { window.location.href = '/'; });
+
+function loadAll() {
+  fetch('/api/estudiante/pendientes').then(function(r) { return r.json(); }).then(function(d) {
+    d.pendientes.forEach(function(p) { intentadosSet.add(p.id); });
+    renderAgrupaciones();
+  }).catch(function() { renderAgrupaciones(); });
+}
+
+function renderAgrupaciones() {
+  var container = document.getElementById('agrupacionesContainer');
+  container.innerHTML = '';
+  AGRUPACIONES.forEach(function(ag) {
+    var section = document.createElement('div');
+    section.className = 'agrup-section';
+    var html = '<div class="agrup-header">';
+    html += '<div class="agrup-icon" style="background:' + ag.color + '20;color:' + ag.color + '">' + ag.icon + '</div>';
+    html += '<div><h2>' + ag.label + '</h2></div>';
+    html += '<span class="agrup-count" id="count-' + ag.id + '"></span>';
+    html += '</div><div class="cue-grid" id="grid-' + ag.id + '"></div>';
+    section.innerHTML = html;
+    container.appendChild(section);
+    loadAgrupacion(ag.id);
+  });
+}
+
+function loadAgrupacion(agrupacion) {
+  var grid = document.getElementById('grid-' + agrupacion);
+  if (!grid) return;
+  fetch('/api/cuestionarios?agrupacion=' + agrupacion).then(function(r) { return r.json(); }).then(function(d) {
+    var count = d.cuestionarios.length;
+    var countLabel = document.getElementById('count-' + agrupacion);
+    if (countLabel) countLabel.textContent = count + ' cuadernillo' + (count === 1 ? '' : 's');
+    if (count === 0) {
+      grid.innerHTML = '<p style="color:#94a3b8;font-size:13px">No hay cuestionarios disponibles</p>';
+      return;
+    }
+    d.cuestionarios.forEach(function(c) {
+      var esPendiente = intentadosSet.has(c.id);
+      var card = document.createElement('div');
+      card.className = 'cue-card';
+      var html = '<div class="cue-title">' + c.titulo + '</div>';
+      html += '<div class="cue-meta">';
+      html += '<span>&#128196; ' + (c.total_preguntas || 0) + ' preguntas</span>';
+      html += '<span>&#9201; ' + c.tiempo_limite + ' min</span>';
+      html += '</div>';
+      html += '<div class="cue-actions">';
+      if (esPendiente) {
+        html += '<span class="cue-badge pending">Pendiente</span>';
+        html += '<button class="btn btn-primary btn-sm" onclick="iniciarCuestionario(' + c.id + ',\'' + c.titulo.replace(/'/g, "\\'") + '\')">Iniciar</button>';
+      } else {
+        html += '<span class="cue-badge done">&#10003; Completado</span>';
+        html += '<button class="btn btn-secondary btn-sm" onclick="iniciarCuestionario(' + c.id + ',\'' + c.titulo.replace(/'/g, "\\'") + '\')">Repasar</button>';
+      }
+      html += '</div>';
+      card.innerHTML = html;
+      grid.appendChild(card);
+    });
+  });
+}
+
+function iniciarCuestionario(id, titulo) {
+  if (!confirm('Iniciar cuestionario "' + titulo + '"\n¿Estás seguro?')) return;
+  fetch('/api/intentos', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cuestionario_id: id }) }).then(function(r) { return r.json(); }).then(function(d) {
+    window.location.href = '/student/cuestionario.html?intento=' + d.id + '&total=' + d.total + '&cuestionario=' + id;
+  });
+}
+
+function logout() { fetch('/api/logout', { method: 'POST' }).then(function() { window.location.href = '/'; }); }
+</script>
+</body></html>

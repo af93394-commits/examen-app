@@ -240,6 +240,8 @@ async function initDB() {
     // Pausa de simulacro: tiempo ya consumido (excluye pausas) y marca de pausa del bloque actual
     await db.query(`ALTER TABLE simulacro_bloques ADD COLUMN IF NOT EXISTS tiempo_usado_segundos INTEGER NOT NULL DEFAULT 0`);
     await db.query(`ALTER TABLE simulacro_bloques ADD COLUMN IF NOT EXISTS pausado_en TIMESTAMP`);
+    // Modulo PreICFES Varios: agrupacion de cuestionarios (entrenamiento, grupo_fenix, predicciones, milton_ochoa, ascensus, pack_estudios, varios)
+    await db.query(`ALTER TABLE cuestionarios ADD COLUMN IF NOT EXISTS agrupacion TEXT`);
     await db.query(`INSERT INTO simulacro_config_materias (materia_id, preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion) VALUES
       (2, 41, 90, 3.0, 1),
       (1, 50, 100, 3.0, 2),
@@ -688,7 +690,7 @@ app.put('/api/preguntas/:id/asignar-texto', requireAdmin, apiLimiter, async (req
 app.get('/api/cuestionarios', requireAuth, apiLimiter, async (req, res) => {
   try {
     const isAdmin = req.session.user.rol === 'admin';
-    const { materia_id } = req.query;
+    const { materia_id, agrupacion } = req.query;
     let sql = `SELECT c.*, m.nombre as materia_nombre, 
       (SELECT COUNT(*) FROM cuestionario_preguntas WHERE cuestionario_id = c.id) as total_preguntas
       FROM cuestionarios c LEFT JOIN materias m ON c.materia_id = m.id`;
@@ -696,6 +698,7 @@ app.get('/api/cuestionarios', requireAuth, apiLimiter, async (req, res) => {
     const conditions = [];
     if (!isAdmin) conditions.push('c.activo = 1');
     if (materia_id) { conditions.push('c.materia_id = $' + (params.length + 1)); params.push(materia_id); }
+    if (agrupacion) { conditions.push('c.agrupacion = $' + (params.length + 1)); params.push(agrupacion); }
     if (conditions.length > 0) sql += ' WHERE ' + conditions.join(' AND ');
     sql += ' ORDER BY c.id DESC';
     const r = await db.query(sql, params);
@@ -704,10 +707,10 @@ app.get('/api/cuestionarios', requireAuth, apiLimiter, async (req, res) => {
 });
 app.post('/api/cuestionarios', requireAdmin, apiLimiter, async (req, res) => {
   try {
-    const { titulo, descripcion, tiempo_limite, materia_id } = req.body;
+    const { titulo, descripcion, tiempo_limite, materia_id, agrupacion } = req.body;
     if (!titulo) return res.status(400).json({ error: 'Titulo requerido' });
-    const r = await db.query('INSERT INTO cuestionarios (titulo, descripcion, tiempo_limite, materia_id, creado_por) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-      [titulo, descripcion || '', tiempo_limite || 60, materia_id || null, req.session.user.id]);
+    const r = await db.query('INSERT INTO cuestionarios (titulo, descripcion, tiempo_limite, materia_id, agrupacion, creado_por) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id',
+      [titulo, descripcion || '', tiempo_limite || 60, materia_id || null, agrupacion || null, req.session.user.id]);
     res.json({ id: r.rows[0].id, message: 'Cuestionario creado' });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

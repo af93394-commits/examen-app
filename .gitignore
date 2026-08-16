@@ -18,3 +18,5 @@ preguntas_sociales.html
 respaldo_sincronizado/
 *.db
 *.sqlite
+scripts/import_log.json
+scripts/extraido/
