@@ -242,6 +242,7 @@ async function initDB() {
     await db.query(`ALTER TABLE simulacro_bloques ADD COLUMN IF NOT EXISTS pausado_en TIMESTAMP`);
     // Modulo PreICFES Varios: agrupacion de cuestionarios (entrenamiento, grupo_fenix, predicciones, milton_ochoa, ascensus, pack_estudios, varios)
     await db.query(`ALTER TABLE cuestionarios ADD COLUMN IF NOT EXISTS agrupacion TEXT`);
+    await db.query(`ALTER TABLE intentos ADD COLUMN IF NOT EXISTS puntaje_global INTEGER`);
     await db.query(`INSERT INTO simulacro_config_materias (materia_id, preguntas_requeridas, tiempo_minutos, peso_ponderacion, orden_presentacion) VALUES
       (2, 41, 90, 3.0, 1),
       (1, 50, 100, 3.0, 2),
@@ -798,9 +799,11 @@ app.put('/api/intentos/:id/finalizar', requireAuth, apiLimiter, async (req, res)
        WHERE intento_id = $1 AND es_correcta = 1`,
       [req.params.id]
     );
-    await db.query('UPDATE intentos SET puntuacion = $1, completado = 1, fin_en = CURRENT_TIMESTAMP WHERE id = $2', [parseInt(r.rows[0].correctas), req.params.id]);
+    const correctas = parseInt(r.rows[0].correctas);
+    await db.query('UPDATE intentos SET puntuacion = $1, completado = 1, fin_en = CURRENT_TIMESTAMP WHERE id = $2', [correctas, req.params.id]);
     const nuevasInsignias = await badgesEngine.evaluarInsignias(req.session.user.id, parseInt(req.params.id));
-    res.json({ puntuacion: parseInt(r.rows[0].correctas), nuevasInsignias });
+    const icfes = await calcularPuntajeIcfes(db, parseInt(req.params.id), true);
+    res.json({ puntuacion: correctas, nuevasInsignias, icfes });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/intentos/:id/resultados', requireAuth, apiLimiter, async (req, res) => {
@@ -808,7 +811,8 @@ app.get('/api/intentos/:id/resultados', requireAuth, apiLimiter, async (req, res
     const resp = await db.query(`SELECT ir.*, p.texto, p.opcion_a, p.opcion_b, p.opcion_c, p.opcion_d, p.respuesta_correcta, p.imagen, p.imagen_opcion_a, p.imagen_opcion_b, p.imagen_opcion_c, p.imagen_opcion_d
       FROM intento_respuestas ir JOIN preguntas p ON ir.pregunta_id = p.id WHERE ir.intento_id = $1`, [req.params.id]);
     const intento = await db.query('SELECT * FROM intentos WHERE id = $1', [req.params.id]);
-    res.json({ respuestas: resp.rows, intento: intento.rows[0] });
+    const icfes = await calcularPuntajeIcfes(db, parseInt(req.params.id));
+    res.json({ respuestas: resp.rows, intento: intento.rows[0], icfes });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 app.get('/api/mis-intentos', requireAuth, apiLimiter, async (req, res) => {
@@ -816,7 +820,11 @@ app.get('/api/mis-intentos', requireAuth, apiLimiter, async (req, res) => {
     const r = await db.query(`SELECT i.*, COALESCE(c.titulo, 'Cuestionario eliminado') as cuestionario_titulo FROM intentos i
       LEFT JOIN cuestionarios c ON i.cuestionario_id = c.id
       WHERE i.usuario_id = $1 ORDER BY i.inicio_en DESC`, [req.session.user.id]);
-    res.json({ intentos: r.rows });
+    const intentos = r.rows.map(i => ({
+      ...i,
+      puntaje_global_nivel: i.puntaje_global != null ? calcularNivelDesempeno(Math.round(i.puntaje_global / 5)) : null
+    }));
+    res.json({ intentos });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1009,6 +1017,46 @@ function calcularNivelDesempeno(puntajeArea) {
   if (puntajeArea <= 59) return 'Minimo';
   if (puntajeArea <= 79) return 'Satisfactorio';
   return 'Avanzado';
+}
+
+// Puntaje ICFES para intentos del modulo PreICFES Varios (cuestionarios con agrupacion).
+// Mismas reglas que el simulacro: area 0-100 (correctas/total) y global 0-500 ponderado 3-3-3-3-1.
+async function calcularPuntajeIcfes(db, intentoId, guardar = false) {
+  const intento = await db.query(`SELECT i.*, c.agrupacion FROM intentos i LEFT JOIN cuestionarios c ON c.id = i.cuestionario_id WHERE i.id = $1`, [intentoId]);
+  const it = intento.rows[0];
+  if (!it || !it.agrupacion) return null;
+
+  const areas = await db.query(`
+    SELECT p.materia_id, m.nombre AS materia_nombre,
+      COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE ir.es_correcta = 1)::int AS correctas
+    FROM intento_respuestas ir
+    JOIN preguntas p ON p.id = ir.pregunta_id
+    JOIN materias m ON m.id = p.materia_id
+    WHERE ir.intento_id = $1
+    GROUP BY p.materia_id, m.nombre
+    ORDER BY (SELECT orden_presentacion FROM simulacro_config_materias scm WHERE scm.materia_id = p.materia_id)`, [intentoId]);
+
+  const pesos = await db.query('SELECT materia_id, peso_ponderacion FROM simulacro_config_materias');
+  const pesoMap = Object.fromEntries(pesos.rows.map(r => [r.materia_id, parseFloat(r.peso_ponderacion) || 1]));
+  let suma = 0, sumaPesos = 0;
+  const detalle = areas.rows.map(a => {
+    const puntajeArea = a.total > 0 ? Math.round((a.correctas / a.total) * 100) : 0;
+    const peso = pesoMap[a.materia_id] || 1;
+    suma += puntajeArea * peso;
+    sumaPesos += peso;
+    return {
+      materia_id: a.materia_id,
+      materia_nombre: a.materia_nombre,
+      total: a.total,
+      correctas: a.correctas,
+      puntaje_area: puntajeArea,
+      puntaje_area_nivel: calcularNivelDesempeno(puntajeArea)
+    };
+  });
+  const puntajeGlobal = sumaPesos > 0 ? Math.round((suma / sumaPesos) * 5) : 0;
+  if (guardar) await db.query('UPDATE intentos SET puntaje_global = $1 WHERE id = $2', [puntajeGlobal, intentoId]);
+  return { puntaje_global: puntajeGlobal, puntaje_global_nivel: calcularNivelDesempeno(Math.round(puntajeGlobal / 5)), areas: detalle };
 }
 
 async function seleccionarPreguntasMateria(db, usuarioId, materiaId, requeridas, maxRepetidasPct) {

@@ -36,6 +36,26 @@
 .tab-btn{border:2px solid #e2e8f0;background:#fff;color:#475569;border-radius:10px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;transition:all .15s}
 .tab-btn:hover{border-color:#2563eb;color:#2563eb}
 .tab-btn.active{background:#2563eb;border-color:#2563eb;color:#fff}
+.icfes-global{background:linear-gradient(135deg,#1e3a8a,#2563eb);color:#fff;border-radius:16px;padding:26px;text-align:center;margin-bottom:20px}
+.icfes-global .label{font-size:14px;color:#bfdbfe}
+.icfes-global .score{font-size:52px;font-weight:800;margin:6px 0}
+.icfes-global .nivel{display:inline-block;background:rgba(255,255,255,.2);border-radius:20px;padding:6px 18px;font-weight:700;font-size:15px}
+.icfes-global .det{font-size:13px;color:#dbeafe;margin-top:14px}
+.icfes-areas{display:flex;flex-direction:column;gap:10px;margin-bottom:24px}
+.icfes-area{background:#fff;border-radius:12px;padding:14px 18px;box-shadow:0 1px 4px rgba(0,0,0,.08);border:1px solid #f1f5f9;display:flex;align-items:center;gap:12px}
+.icfes-area .nombre{font-size:15px;font-weight:700;color:#1e293b;flex:1}
+.icfes-area .barra-m{background:#e2e8f0;border-radius:6px;height:8px;width:140px;overflow:hidden}
+.icfes-area .barra-f{height:100%;background:#16a34a;border-radius:6px}
+.icfes-area .puntaje{font-size:16px;font-weight:800;color:#1e293b;width:48px;text-align:right}
+.icfes-area .nivel-sm{font-size:11px;font-weight:700;padding:3px 10px;border-radius:12px;text-transform:uppercase}
+.nivel.Satisfactorio{background:#dcfce7;color:#166534}
+.nivel.Minimo{background:#fef3c7;color:#b45309}
+.nivel.Insuficiente{background:#fee2e2;color:#b91c1c}
+.nivel.Avanzado{background:#dbeafe;color:#1e40af}
+.icfes-area .nivel-sm.Satisfactorio{background:#dcfce7;color:#166534}
+.icfes-area .nivel-sm.Minimo{background:#fef3c7;color:#b45309}
+.icfes-area .nivel-sm.Insuficiente{background:#fee2e2;color:#b91c1c}
+.icfes-area .nivel-sm.Avanzado{background:#dbeafe;color:#1e40af}
 </style>
 </head>
 <body>
@@ -144,6 +164,27 @@ function loadResultado(id) {
     if (numPendientes > 0) html += '<div class="stat-item" style="background:#fef3c7"><div class="number" style="color:#f59e0b">' + numPendientes + '</div><div class="label">Pendientes</div></div>';
     html += '<div class="stat-item total"><div class="number">' + it.total_preguntas + '</div><div class="label">Total</div></div>';
     html += '</div>';
+
+    // Puntaje ICFES (solo cuando el cuestionario es del modulo PreICFES Varios)
+    if (d.icfes) {
+      html += '<div class="icfes-global">';
+      html += '<div class="label">PUNTAJE GLOBAL SIMULADO (escala oficial 0-500)</div>';
+      html += '<div class="score">' + d.icfes.puntaje_global + '</div>';
+      html += '<div><span class="nivel ' + d.icfes.puntaje_global_nivel + '">' + d.icfes.puntaje_global_nivel + '</span></div>';
+      html += '<div class="det">Ponderaci&oacute;n oficial Lectura 3 &middot; Matem&aacute;ticas 3 &middot; Sociales 3 &middot; Naturales 3 &middot; Ingl&eacute;s 1</div>';
+      html += '</div>';
+      html += '<div class="icfes-areas">';
+      d.icfes.areas.forEach(function(a) {
+        var pct = a.total > 0 ? Math.round(a.correctas * 100 / a.total) : 0;
+        html += '<div class="icfes-area">';
+        html += '<div class="nombre">' + a.materia_nombre + ' <span style="font-weight:400;color:#94a3b8;font-size:12px">(' + a.correctas + '/' + a.total + ' correctas)</span></div>';
+        html += '<div class="barra-m"><div class="barra-f" style="width:' + pct + '%"></div></div>';
+        html += '<div class="puntaje">' + a.puntaje_area + '</div>';
+        html += '<span class="nivel-sm ' + a.puntaje_area_nivel + '">' + a.puntaje_area_nivel + '</span>';
+        html += '</div>';
+      });
+      html += '</div>';
+    }
 
     html += '<h2 style="margin-bottom:16px">Respuestas detalladas</h2>';
 
@@ -259,7 +300,8 @@ function loadHistorial() {
 
       var html = '<div class="card">';
       html += '<div class="card-header"><h3>' + dinoIcon + ' ' + it.cuestionario_titulo + '</h3>';
-      html += '<span class="badge ' + cls + '">' + pct + '%</span></div>';
+      if (it.puntaje_global != null) html += '<span class="badge badge-active">' + it.puntaje_global + ' pts &middot; ' + (it.puntaje_global_nivel || '—') + '</span>';
+      else html += '<span class="badge ' + cls + '">' + pct + '%</span></div>';
       
       // Mini progress bar
       html += '<div class="progress-bar-container" style="height:8px;margin:8px 0">';

@@ -73,7 +73,7 @@ async function main() {
     });
   }
 
-  const [{ rows: otas }] = await db.query('SELECT id, texto FROM preguntas');
+  const { rows: otas } = await db.query('SELECT id, texto FROM preguntas');
   const mapa = new Map();
   otas.forEach(function(p) { mapa.set(normTexto(p.texto), p.id); });
 
@@ -144,15 +144,18 @@ async function main() {
   const enCuestionario = new Set();
   const rCuest = await db.query('SELECT pregunta_id FROM cuestionario_preguntas WHERE cuestionario_id = $1', [cuestionarioId]);
   rCuest.rows.forEach(function(x) { enCuestionario.add(x.pregunta_id); });
+  const rMax = await db.query('SELECT COALESCE(MAX(orden),0)::int AS max_orden FROM cuestionario_preguntas WHERE cuestionario_id = $1', [cuestionarioId]);
+  let ordenActual = rMax.rows[0].max_orden;
 
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     let insertadas = 0, vinculadas = 0;
     for (const item of mapaDatos) {
+      ordenActual++;
       if (item.tipo === 'vincular') {
         if (!enCuestionario.has(item.pregunta_id)) {
-          await client.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3)', [cuestionarioId, item.pregunta_id, item.orden]);
+          await client.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3)', [cuestionarioId, item.pregunta_id, ordenActual]);
           enCuestionario.add(item.pregunta_id);
         }
         vinculadas++;
@@ -161,7 +164,7 @@ async function main() {
           const ir = await client.query(
             'INSERT INTO preguntas (texto, opcion_a, opcion_b, opcion_c, opcion_d, respuesta_correcta, materia_id, texto_lectura, creado_por) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,NULL) RETURNING id',
             [item.texto, item.opciones.A, item.opciones.B, item.opciones.C, item.opciones.D, item.rta, item.materia_id, item.texto_lectura]);
-          await client.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3)', [cuestionarioId, ir.rows[0].id, item.orden]);
+          await client.query('INSERT INTO cuestionario_preguntas (cuestionario_id, pregunta_id, orden) VALUES ($1,$2,$3)', [cuestionarioId, ir.rows[0].id, ordenActual]);
           mapa.set(item.norm, ir.rows[0].id);
           insertadas++;
         }

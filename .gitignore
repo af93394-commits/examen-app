@@ -5,6 +5,7 @@ url_actual.txt
 iniciar-ngrok.bat
 iniciar-ngrok.ps1
 SESION_TRABAJO.md
+MODULO_PREICFES_VARIOS.md
 uploads/*
 !uploads/.gitkeep
 .env
